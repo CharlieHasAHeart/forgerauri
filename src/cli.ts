@@ -4,6 +4,7 @@
  * - `pnpm dev -- --spec ./spec.json`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply`
+ * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
  *
  * After scaffold generation:
  * - `cd <outDir>/<app-slug>`
