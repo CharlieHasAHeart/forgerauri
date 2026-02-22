@@ -22,6 +22,7 @@
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { ZodError } from "zod";
+import { loadEnvFile } from "./config/loadEnv.js";
 import { applyPlan } from "./generator/apply.js";
 import { generateScaffold } from "./generator/scaffold/index.js";
 import type { Plan, PlanActionType } from "./generator/types.js";
@@ -234,6 +235,7 @@ const runGenerate = async (options: CliOptions): Promise<void> => {
 };
 
 const main = async (): Promise<void> => {
+  loadEnvFile();
   const options = parseArgs(process.argv.slice(2));
 
   try {
