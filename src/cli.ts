@@ -6,36 +6,40 @@
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply`
  * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
  *
+ * LLM enrich:
+ * - `OPENAI_API_KEY=... OPENAI_MODEL=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply --llm-enrich-spec`
+ *
+ * Repair:
+ * - `OPENAI_API_KEY=... OPENAI_MODEL=... pnpm dev --repair --project ./generated/<appSlug> --cmd pnpm --args "tauri,dev" --apply`
+ *
  * After scaffold generation:
  * - `cd <outDir>/<app-slug>`
  * - `pnpm install`
  * - `pnpm tauri dev`
  * - In the app window, switch Screens navigation and use action Run to execute lint_config/apply_fixes.
  * - Then run list_lint_runs/list_fix_runs from action command selector to verify DB history increases.
- * - In the app window, use Commands Demo to run a generated command and List Runs.
- *
- * Incremental generation:
- * 1) `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
- * 2) Run the same command again; unchanged files should be SKIP.
- * 3) Edit `src/App.svelte` in generated app, run again, and inspect patch output in `generated/patches/*.patch`.
- *
- * Zones:
- * - Generated Zone: `src/lib/generated/**`, `src/lib/screens/generated/**`, `src/lib/components/generated/**`,
- *   `src/lib/api/generated/**`, `src-tauri/src/generated/**`, `src-tauri/migrations/generated/**`
- * - User Zone: `src/lib/custom/**`, `src-tauri/src/custom/**`, `src/App.svelte`, `src-tauri/src/main.rs`
  */
+import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { ZodError } from "zod";
 import { applyPlan } from "./generator/apply.js";
 import { generateScaffold } from "./generator/scaffold/index.js";
 import type { Plan, PlanActionType } from "./generator/types.js";
-import { loadSpec } from "./spec/loadSpec.js";
+import { getProviderFromEnv } from "./llm/index.js";
+import { repairOnce } from "./repair/repairLoop.js";
+import { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
+import { loadSpec, parseSpecFromRaw } from "./spec/loadSpec.js";
 
 type CliOptions = {
   specPath?: string;
   outDir?: string;
   plan: boolean;
   apply: boolean;
+  llmEnrichSpec: boolean;
+  repair: boolean;
+  project?: string;
+  cmd?: string;
+  cmdArgs: string[];
 };
 
 const printValidationErrors = (error: ZodError): void => {
@@ -51,6 +55,11 @@ const parseArgs = (argv: string[]): CliOptions => {
   let outDir: string | undefined;
   let plan = false;
   let apply = false;
+  let llmEnrichSpec = false;
+  let repair = false;
+  let project: string | undefined;
+  let cmd: string | undefined;
+  let cmdArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -60,43 +69,60 @@ const parseArgs = (argv: string[]): CliOptions => {
       i += 1;
       continue;
     }
-
     if (arg === "--out") {
       outDir = argv[i + 1];
       i += 1;
       continue;
     }
-
+    if (arg === "--project") {
+      project = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--cmd") {
+      cmd = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--args") {
+      const raw = argv[i + 1] ?? "";
+      cmdArgs = raw
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+      i += 1;
+      continue;
+    }
     if (arg === "--plan") {
       plan = true;
       continue;
     }
-
     if (arg === "--apply") {
       apply = true;
       continue;
     }
+    if (arg === "--llm-enrich-spec") {
+      llmEnrichSpec = true;
+      continue;
+    }
+    if (arg === "--repair") {
+      repair = true;
+      continue;
+    }
 
-    if (!arg.startsWith("-") && !specPath) {
+    if (!arg.startsWith("-") && !specPath && !repair) {
       specPath = arg;
     }
   }
 
-  return { specPath, outDir, plan, apply };
+  return { specPath, outDir, plan, apply, llmEnrichSpec, repair, project, cmd, cmdArgs };
 };
 
 const summarizePlan = (plan: Plan): Record<PlanActionType, number> => {
-  const counts: Record<PlanActionType, number> = {
-    CREATE: 0,
-    OVERWRITE: 0,
-    SKIP: 0,
-    PATCH: 0
-  };
-
+  const counts: Record<PlanActionType, number> = { CREATE: 0, OVERWRITE: 0, SKIP: 0, PATCH: 0 };
   plan.actions.forEach((action) => {
     counts[action.type] += 1;
   });
-
   return counts;
 };
 
@@ -112,12 +138,13 @@ const printPlan = (plan: Plan): void => {
     `Plan summary: create=${counts.CREATE}, overwrite=${counts.OVERWRITE}, patch=${counts.PATCH}, skip=${counts.SKIP}`
   );
 
-  const skipped = sorted.filter((action) => action.type === "SKIP");
-  if (skipped.length > 0) {
-    console.log("Skipped items:");
-    skipped.forEach((action) => {
-      console.log(`- ${action.path}: ${action.reason}`);
+  const patchTargets = sorted.filter((action) => action.type === "PATCH");
+  if (patchTargets.length > 0) {
+    console.log("Patch targets:");
+    patchTargets.forEach((action) => {
+      console.log(`- ${action.path}`);
     });
+    console.log("Manual merge required for user-zone files.");
   }
 };
 
@@ -126,50 +153,96 @@ const usage = (): void => {
   console.error("- pnpm dev -- <spec.json>");
   console.error("- pnpm dev -- <spec.json> --out <dir> --plan");
   console.error("- pnpm dev -- <spec.json> --out <dir> --apply");
+  console.error("- pnpm dev --repair --project <path> --cmd <cmd> --args \"a,b,c\" --apply");
 };
 
-const main = async (): Promise<void> => {
-  const args = process.argv.slice(2);
-  const options = parseArgs(args);
+const runRepair = async (options: CliOptions): Promise<void> => {
+  if (!options.project || !options.cmd) {
+    throw new Error("--repair requires --project and --cmd");
+  }
 
+  const provider = getProviderFromEnv();
+  const result = await repairOnce({
+    projectRoot: options.project,
+    cmd: options.cmd,
+    args: options.cmdArgs,
+    provider,
+    apply: options.apply
+  });
+
+  console.log(`Repair result: ${result.ok ? "ok" : "failed"}`);
+  console.log(result.summary);
+  if (result.patchPaths && result.patchPaths.length > 0) {
+    console.log("Patch files:");
+    result.patchPaths.forEach((path) => console.log(`- ${path}`));
+  }
+};
+
+const runGenerate = async (options: CliOptions): Promise<void> => {
   if (!options.specPath) {
     usage();
     process.exitCode = 1;
     return;
   }
 
-  try {
-    const ir = await loadSpec(options.specPath);
-    console.log("Validation summary: OK");
+  let ir;
 
-    if (!options.outDir) {
-      console.log(JSON.stringify(ir, null, 2));
+  if (options.llmEnrichSpec) {
+    const rawText = await readFile(options.specPath, "utf8");
+    const rawJson = JSON.parse(rawText) as unknown;
+
+    try {
+      const provider = getProviderFromEnv();
+      const enriched = await enrichWireSpecWithLLM({ wire: rawJson, provider });
+      ir = parseSpecFromRaw(enriched.wireEnriched);
+      console.log(`Spec enrich: used=${enriched.used}`);
+    } catch (error) {
+      ir = parseSpecFromRaw(rawJson);
+      console.log("Spec enrich: used=false (fallback to deterministic parse)");
+      if (error instanceof Error) {
+        console.log(`Spec enrich note: ${error.message}`);
+      }
+    }
+  } else {
+    ir = await loadSpec(options.specPath);
+  }
+
+  console.log("Validation summary: OK");
+
+  if (!options.outDir) {
+    console.log(JSON.stringify(ir, null, 2));
+    return;
+  }
+
+  const plan = await generateScaffold(ir, options.outDir);
+  if (options.plan || !options.apply) {
+    printPlan(plan);
+  }
+
+  const applied = await applyPlan(plan, { apply: options.apply });
+  if (options.apply) {
+    const counts = summarizePlan(plan);
+    console.log(`Apply summary: wrote=${counts.CREATE + counts.OVERWRITE}, skipped=${counts.SKIP}, patched=${counts.PATCH}`);
+    if (applied.patchFiles.length > 0) {
+      console.log("Patch files:");
+      applied.patchFiles.forEach((patchPath) => console.log(`- ${patchPath}`));
+      console.log("Manual merge required for user-zone files listed in patch files.");
+    }
+  } else {
+    console.log("Apply summary: dry-run (no files written). Use --apply to write files.");
+  }
+};
+
+const main = async (): Promise<void> => {
+  const options = parseArgs(process.argv.slice(2));
+
+  try {
+    if (options.repair) {
+      await runRepair(options);
       return;
     }
 
-    const plan = await generateScaffold(ir, options.outDir);
-
-    if (options.plan || !options.apply) {
-      printPlan(plan);
-    }
-
-    const applied = await applyPlan(plan, { apply: options.apply });
-
-    if (options.apply) {
-      const counts = summarizePlan(plan);
-      console.log(
-        `Apply summary: wrote=${counts.CREATE + counts.OVERWRITE}, skipped=${counts.SKIP}, patched=${counts.PATCH}`
-      );
-      if (applied.patchFiles.length > 0) {
-        console.log("Patch files:");
-        applied.patchFiles.forEach((patchPath) => {
-          console.log(`- ${patchPath}`);
-        });
-        console.log("Manual merge required for user-zone files listed in patch files.");
-      }
-    } else {
-      console.log("Apply summary: dry-run (no files written). Use --apply to write files.");
-    }
+    await runGenerate(options);
   } catch (error) {
     if (error instanceof ZodError) {
       printValidationErrors(error);

@@ -15,4 +15,8 @@ export { buildUIBPlan } from "./generator/ui/planUIB.js";
 export { classifyPath, type Zone } from "./generator/zones.js";
 export { makeUnifiedDiff } from "./generator/diff.js";
 export { applyPlan } from "./generator/apply.js";
+export { getProviderFromEnv } from "./llm/index.js";
+export type { LlmCallOptions, LlmMessage, LlmProvider } from "./llm/provider.js";
+export { repairOnce } from "./repair/repairLoop.js";
+export { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
 export type { FileWriteMode, Plan, PlanAction, PlanActionType } from "./generator/types.js";

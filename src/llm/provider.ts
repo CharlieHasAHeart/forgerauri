@@ -1,0 +1,97 @@
+import { z } from "zod";
+
+export type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
+
+export type LlmCallOptions = {
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+};
+
+export interface LlmProvider {
+  name: string;
+  completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string>;
+  completeJSON<T>(
+    messages: LlmMessage[],
+    schema: z.ZodType<T>,
+    opts?: LlmCallOptions
+  ): Promise<{ data: T; raw: string; attempts: number }>;
+}
+
+const extractJsonObject = (raw: string): string => {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const source = fenced ? fenced[1].trim() : trimmed;
+
+  const firstBrace = source.indexOf("{");
+  const lastBrace = source.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return source.slice(firstBrace, lastBrace + 1);
+  }
+
+  const firstBracket = source.indexOf("[");
+  const lastBracket = source.lastIndexOf("]");
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    return source.slice(firstBracket, lastBracket + 1);
+  }
+
+  return source;
+};
+
+const summarizeZodError = (error: z.ZodError): string =>
+  error.issues.map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`).join("; ");
+
+export abstract class BaseLlmProvider implements LlmProvider {
+  abstract name: string;
+  abstract completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string>;
+
+  async completeJSON<T>(
+    messages: LlmMessage[],
+    schema: z.ZodType<T>,
+    opts?: LlmCallOptions
+  ): Promise<{ data: T; raw: string; attempts: number }> {
+    const maxAttempts = 3;
+    let currentMessages = [...messages];
+    let lastRaw = "";
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      lastRaw = await this.completeText(currentMessages, opts);
+
+      try {
+        const jsonText = extractJsonObject(lastRaw);
+        const parsed = JSON.parse(jsonText) as unknown;
+        const data = schema.parse(parsed);
+        return { data, raw: lastRaw, attempts: attempt };
+      } catch (error) {
+        if (attempt === maxAttempts) {
+          if (error instanceof z.ZodError) {
+            throw new Error(`LLM JSON validation failed after ${attempt} attempts: ${summarizeZodError(error)}`);
+          }
+          if (error instanceof Error) {
+            throw new Error(`LLM JSON parse failed after ${attempt} attempts: ${error.message}`);
+          }
+          throw new Error(`LLM JSON parse failed after ${attempt} attempts`);
+        }
+
+        const summary =
+          error instanceof z.ZodError
+            ? summarizeZodError(error)
+            : error instanceof Error
+              ? error.message
+              : "unknown parse error";
+
+        currentMessages = [
+          ...currentMessages,
+          {
+            role: "user",
+            content:
+              "Your previous response was not valid JSON for the required schema. " +
+              `Errors: ${summary}. Return ONLY valid JSON.`
+          }
+        ];
+      }
+    }
+
+    throw new Error("Unreachable");
+  }
+}
