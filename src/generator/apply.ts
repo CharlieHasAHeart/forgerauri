@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
+import { classifyPath } from "./zones.js";
 import type { Plan } from "./types.js";
 
 const ensureInside = (root: string, target: string): void => {
@@ -19,21 +20,43 @@ const ensureInside = (root: string, target: string): void => {
   }
 };
 
-export const applyPlan = async (plan: Plan, opts: { apply: boolean }): Promise<void> => {
+const toSafePatchName = (relativePath: string): string =>
+  relativePath
+    .replace(/[\\/]+/g, "__")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/_+/g, "_");
+
+export const applyPlan = async (plan: Plan, opts: { apply: boolean }): Promise<{ patchFiles: string[] }> => {
   const root = resolve(plan.appDir);
+  const patchFiles: string[] = [];
 
   plan.actions.forEach((action) => {
     ensureInside(root, action.path);
   });
 
   if (!opts.apply) {
-    return;
+    return { patchFiles };
   }
 
   for (const action of plan.actions) {
     ensureInside(root, action.path);
+    const rel = relative(root, resolve(action.path)).split(sep).join("/");
+    const zone = classifyPath(rel);
 
     if (action.type !== "CREATE" && action.type !== "OVERWRITE") {
+      if (action.type === "PATCH" && action.entryType === "file") {
+        const patchDir = resolve(root, "generated/patches");
+        await mkdir(patchDir, { recursive: true });
+        const patchPath = resolve(patchDir, `${toSafePatchName(rel)}.patch`);
+        ensureInside(root, patchPath);
+        await writeFile(patchPath, action.patchText ?? "", "utf8");
+        action.patchFilePath = patchPath;
+        patchFiles.push(patchPath);
+      }
+      continue;
+    }
+
+    if (zone === "user" && action.type === "OVERWRITE") {
       continue;
     }
 
@@ -43,6 +66,9 @@ export const applyPlan = async (plan: Plan, opts: { apply: boolean }): Promise<v
     }
 
     if (action.entryType === "file") {
+      if (zone === "user" && action.type === "OVERWRITE") {
+        continue;
+      }
       if (typeof action.content !== "string") {
         throw new Error(`Missing file content for ${action.path}`);
       }
@@ -50,4 +76,6 @@ export const applyPlan = async (plan: Plan, opts: { apply: boolean }): Promise<v
       await writeFile(action.path, action.content, "utf8");
     }
   }
+
+  return { patchFiles };
 };

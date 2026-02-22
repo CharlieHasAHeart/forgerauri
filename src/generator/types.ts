@@ -1,6 +1,6 @@
 export type PlanActionType = "CREATE" | "OVERWRITE" | "SKIP" | "PATCH";
 
-export type FileWriteMode = "generated" | "user";
+export type FileWriteMode = "generated" | "user" | "unknown";
 
 export type PlanEntryType = "file" | "dir";
 
@@ -13,6 +13,8 @@ export type PlanAction = {
   mode: FileWriteMode;
   content?: string;
   patch?: string;
+  patchText?: string;
+  patchFilePath?: string;
 };
 
 export type Plan = {

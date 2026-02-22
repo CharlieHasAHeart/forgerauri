@@ -12,5 +12,7 @@ export { generateUIA } from "./generator/ui/index.js";
 export { generateUIB } from "./generator/ui/index.js";
 export { buildUIAPlan } from "./generator/ui/planUIA.js";
 export { buildUIBPlan } from "./generator/ui/planUIB.js";
+export { classifyPath, type Zone } from "./generator/zones.js";
+export { makeUnifiedDiff } from "./generator/diff.js";
 export { applyPlan } from "./generator/apply.js";
 export type { FileWriteMode, Plan, PlanAction, PlanActionType } from "./generator/types.js";

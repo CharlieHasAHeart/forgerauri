@@ -84,7 +84,7 @@ export const templateAppWithScreensNav = (ir: SpecIR): string => {
     .join(",\n");
 
   const componentImports = screens
-    .map((screen, index) => `import Screen${index} from "./lib/screens/generated/${screen.slug}.svelte";`)
+    .map((screen, index) => `import Screen${index} from "../screens/generated/${screen.slug}.svelte";`)
     .join("\n");
 
   const commandFallback = screens.length > 0 ? `let currentSlug = screens[0].slug;` : 'let currentSlug = "";';
@@ -92,9 +92,9 @@ export const templateAppWithScreensNav = (ir: SpecIR): string => {
   const screenComponentMap = screens.length > 0 ? `{\n${imports}\n  }` : "{}";
 
   return `<script lang="ts">
-  import { invokeCommand } from "./lib/api/tauri";
-  import { generatedCommands, listCommandRuns, runGeneratedCommand, type GeneratedCommandMeta } from "./lib/api/generated/commands";
-  import { screens } from "./lib/screens/generated";
+  import { invokeCommand } from "../api/tauri";
+  import { generatedCommands, listCommandRuns, runGeneratedCommand, type GeneratedCommandMeta } from "../api/generated/commands";
+  import { screens } from "../screens/generated";
 ${componentImports}
 
   type DbHealth = {
@@ -413,11 +413,19 @@ ${componentImports}
 `;
 };
 
+export const templateUserAppEntry = (): string => `<script lang="ts">
+  import AppShell from "./lib/generated/AppShell.svelte";
+</script>
+
+<AppShell />
+`;
+
 export const templateUIAFiles = (ir: SpecIR): Record<string, string> => {
   const screens = sortedScreens(ir);
   const files: Record<string, string> = {
     "src/lib/screens/generated/index.ts": templateScreensIndex(ir),
-    "src/App.svelte": templateAppWithScreensNav(ir)
+    "src/lib/generated/AppShell.svelte": templateAppWithScreensNav(ir),
+    "src/App.svelte": templateUserAppEntry()
   };
 
   screens.forEach((screen) => {

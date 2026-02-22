@@ -13,6 +13,16 @@
  * - In the app window, switch Screens navigation and use action Run to execute lint_config/apply_fixes.
  * - Then run list_lint_runs/list_fix_runs from action command selector to verify DB history increases.
  * - In the app window, use Commands Demo to run a generated command and List Runs.
+ *
+ * Incremental generation:
+ * 1) `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
+ * 2) Run the same command again; unchanged files should be SKIP.
+ * 3) Edit `src/App.svelte` in generated app, run again, and inspect patch output in `generated/patches/*.patch`.
+ *
+ * Zones:
+ * - Generated Zone: `src/lib/generated/**`, `src/lib/screens/generated/**`, `src/lib/components/generated/**`,
+ *   `src/lib/api/generated/**`, `src-tauri/src/generated/**`, `src-tauri/migrations/generated/**`
+ * - User Zone: `src/lib/custom/**`, `src-tauri/src/custom/**`, `src/App.svelte`, `src-tauri/src/main.rs`
  */
 import process from "node:process";
 import { ZodError } from "zod";
@@ -143,13 +153,20 @@ const main = async (): Promise<void> => {
       printPlan(plan);
     }
 
-    await applyPlan(plan, { apply: options.apply });
+    const applied = await applyPlan(plan, { apply: options.apply });
 
     if (options.apply) {
       const counts = summarizePlan(plan);
       console.log(
         `Apply summary: wrote=${counts.CREATE + counts.OVERWRITE}, skipped=${counts.SKIP}, patched=${counts.PATCH}`
       );
+      if (applied.patchFiles.length > 0) {
+        console.log("Patch files:");
+        applied.patchFiles.forEach((patchPath) => {
+          console.log(`- ${patchPath}`);
+        });
+        console.log("Manual merge required for user-zone files listed in patch files.");
+      }
     } else {
       console.log("Apply summary: dry-run (no files written). Use --apply to write files.");
     }
