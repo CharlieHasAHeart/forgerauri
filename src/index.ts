@@ -7,6 +7,8 @@ export { buildDbPlan } from "./generator/db/planDb.js";
 export { generateCommands } from "./generator/commands/index.js";
 export { buildCommandsPlan } from "./generator/commands/planCommands.js";
 export { generateUIA } from "./generator/ui/index.js";
+export { generateUIB } from "./generator/ui/index.js";
 export { buildUIAPlan } from "./generator/ui/planUIA.js";
+export { buildUIBPlan } from "./generator/ui/planUIB.js";
 export { applyPlan } from "./generator/apply.js";
 export type { FileWriteMode, Plan, PlanAction, PlanActionType } from "./generator/types.js";

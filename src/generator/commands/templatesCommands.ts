@@ -441,7 +441,7 @@ ${outputFields}
 `;
 };
 
-const buildCommandMeta = (def: CommandDef): string => {
+const buildGeneratedCommandMeta = (def: CommandDef): string => {
   const inputMeta = def.inputFields
     .map(
       (field) =>
@@ -460,6 +460,25 @@ ${inputMeta}
   }`;
 };
 
+const buildCommandSchemaMeta = (def: CommandDef): string => {
+  const inputRows = def.inputFields
+    .map((field) => `      ${JSON.stringify(field.name)}: ${JSON.stringify(field.specType.raw)}`)
+    .join(",\n");
+  const outputRows = def.outputFields
+    .map((field) => `      ${JSON.stringify(field.name)}: ${JSON.stringify(field.specType.raw)}`)
+    .join(",\n");
+
+  return `  {
+    name: ${JSON.stringify(def.invokeName)},
+    input: {
+${inputRows}
+    },
+    output: {
+${outputRows}
+    }
+  }`;
+};
+
 const buildTsCall = (def: CommandDef): string => `export const call_${def.invokeName} = async (input: ${def.inputStruct}): Promise<${def.outputStruct}> => {
   return invokeCommand<${def.outputStruct}>(${JSON.stringify(def.invokeName)}, { input });
 };
@@ -471,7 +490,8 @@ const buildTsSwitchCase = (def: CommandDef): string => `    case ${JSON.stringif
 export const templateTsGeneratedCommandsApi = (defs: CommandDef[]): string => {
   const typeBlocks = defs.map((def) => buildTsTypes(def)).join("\n");
   const callBlocks = defs.map((def) => buildTsCall(def)).join("\n");
-  const metaBlocks = defs.map((def) => buildCommandMeta(def)).join(",\n");
+  const metaBlocks = defs.map((def) => buildGeneratedCommandMeta(def)).join(",\n");
+  const schemaMetaBlocks = defs.map((def) => buildCommandSchemaMeta(def)).join(",\n");
   const switchCases = defs.map((def) => buildTsSwitchCase(def)).join("\n");
 
   return `import { invokeCommand } from "../tauri";
@@ -489,6 +509,16 @@ export type GeneratedCommandMeta = {
   input: GeneratedCommandField[];
 };
 
+export type ApiResponse<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: { code: string; message: string; detail?: string } };
+
+export type CommandMeta = {
+  name: string;
+  input: Record<string, string>;
+  output: Record<string, string>;
+};
+
 ${typeBlocks}
 
 ${callBlocks}
@@ -501,11 +531,31 @@ export const generatedCommands: GeneratedCommandMeta[] = [
 ${metaBlocks}
 ];
 
+export const commandMetas: CommandMeta[] = [
+${schemaMetaBlocks}
+];
+
 export const runGeneratedCommand = async (invokeName: string, input: Record<string, unknown>): Promise<unknown> => {
   switch (invokeName) {
 ${switchCases}
     default:
       throw new Error("Unknown command: " + invokeName);
+  }
+};
+
+export const callCommand = async (name: string, payload: Record<string, unknown>): Promise<ApiResponse<unknown>> => {
+  try {
+    const data = await runGeneratedCommand(name, payload);
+    return { ok: true, data };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return {
+      ok: false,
+      error: {
+        code: "COMMAND_INVOKE_ERROR",
+        message
+      }
+    };
   }
 };
 `;
