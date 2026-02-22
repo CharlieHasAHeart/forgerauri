@@ -4,6 +4,8 @@
  * - `pnpm dev -- --spec ./spec.json`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply`
+ * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan --use-langgraph`
+ * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply --verify --repair --use-langgraph`
  * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
  *
  * LLM enrich:
@@ -30,6 +32,7 @@ import { getProviderFromEnv } from "./llm/index.js";
 import { repairOnce } from "./repair/repairLoop.js";
 import { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
 import { loadSpec, parseSpecFromRaw } from "./spec/loadSpec.js";
+import { runGraphWithOptions } from "./workflow/runGraph.js";
 
 type CliOptions = {
   specPath?: string;
@@ -37,6 +40,8 @@ type CliOptions = {
   plan: boolean;
   apply: boolean;
   llmEnrichSpec: boolean;
+  verify: boolean;
+  useLanggraph: boolean;
   repair: boolean;
   project?: string;
   cmd?: string;
@@ -57,6 +62,8 @@ const parseArgs = (argv: string[]): CliOptions => {
   let plan = false;
   let apply = false;
   let llmEnrichSpec = false;
+  let verify = false;
+  let useLanggraph = false;
   let repair = false;
   let project: string | undefined;
   let cmd: string | undefined;
@@ -106,17 +113,25 @@ const parseArgs = (argv: string[]): CliOptions => {
       llmEnrichSpec = true;
       continue;
     }
+    if (arg === "--verify") {
+      verify = true;
+      continue;
+    }
+    if (arg === "--use-langgraph") {
+      useLanggraph = true;
+      continue;
+    }
     if (arg === "--repair") {
       repair = true;
       continue;
     }
 
-    if (!arg.startsWith("-") && !specPath && !repair) {
+    if (!arg.startsWith("-") && !specPath) {
       specPath = arg;
     }
   }
 
-  return { specPath, outDir, plan, apply, llmEnrichSpec, repair, project, cmd, cmdArgs };
+  return { specPath, outDir, plan, apply, llmEnrichSpec, verify, useLanggraph, repair, project, cmd, cmdArgs };
 };
 
 const summarizePlan = (plan: Plan): Record<PlanActionType, number> => {
@@ -154,6 +169,7 @@ const usage = (): void => {
   console.error("- pnpm dev -- <spec.json>");
   console.error("- pnpm dev -- <spec.json> --out <dir> --plan");
   console.error("- pnpm dev -- <spec.json> --out <dir> --apply");
+  console.error("- pnpm dev -- <spec.json> --out <dir> --apply --verify --repair --use-langgraph");
   console.error("- pnpm dev --repair --project <path> --cmd <cmd> --args \"a,b,c\" --apply");
 };
 
@@ -239,6 +255,20 @@ const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2));
 
   try {
+    if (options.useLanggraph) {
+      const result = await runGraphWithOptions({
+        specPath: options.specPath,
+        outDir: options.outDir,
+        plan: options.plan,
+        apply: options.apply,
+        llmEnrichSpec: options.llmEnrichSpec,
+        verify: options.verify,
+        repair: options.repair
+      });
+      process.exitCode = result.code;
+      return;
+    }
+
     if (options.repair) {
       await runRepair(options);
       return;

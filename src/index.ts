@@ -20,3 +20,6 @@ export type { LlmCallOptions, LlmMessage, LlmProvider } from "./llm/provider.js"
 export { repairOnce } from "./repair/repairLoop.js";
 export { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
 export type { FileWriteMode, Plan, PlanAction, PlanActionType } from "./generator/types.js";
+export { invokeGraph } from "./workflow/graph.js";
+export { createInitialState, WorkflowStateAnnotation } from "./workflow/state.js";
+export { runGraphWithOptions } from "./workflow/runGraph.js";
