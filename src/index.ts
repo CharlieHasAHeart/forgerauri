@@ -23,3 +23,6 @@ export type { FileWriteMode, Plan, PlanAction, PlanActionType } from "./generato
 export { invokeGraph } from "./workflow/graph.js";
 export { createInitialState, WorkflowStateAnnotation } from "./workflow/state.js";
 export { runGraphWithOptions } from "./workflow/runGraph.js";
+export { implementOnce } from "./implement/implementLoop.js";
+export type { ImplementRequest, ImplementResult, ImplementTarget, PatchFile } from "./implement/types.js";
+export { runAgent } from "./agent/runtime.js";

@@ -7,9 +7,19 @@
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan --use-langgraph`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply --verify --repair --use-langgraph`
  * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
+ * - `pnpm dev --implement --project ./generated/agnix --spec /mnt/data/agent-sh__agnix.json --target ui --apply --verify`
+ * - `pnpm dev --implement --project ./generated/agnix --spec /mnt/data/agent-sh__agnix.json --target commands:lint_config --apply --verify --repair`
+ * - `pnpm dev --agent --goal "Generate and run the app, ensure DB health check works" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
+ * - `pnpm dev --agent --goal "Improve UI: better layout, loading states, error banners" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
+ * - `pnpm dev --agent --goal "Implement real lint_config logic and persist results" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
+ *
+ * DashScope env:
+ * - `export DASHSCOPE_API_KEY=...`
+ * - `export DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1`
+ * - `export DASHSCOPE_MODEL=qwen3-max-2026-01-23`
  *
  * LLM enrich:
- * - `OPENAI_API_KEY=... OPENAI_MODEL=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply --llm-enrich-spec`
+ * - `DASHSCOPE_API_KEY=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply --llm-enrich-spec`
  *
  * Repair:
  * - `OPENAI_API_KEY=... OPENAI_MODEL=... pnpm dev --repair --project ./generated/<appSlug> --cmd pnpm --args "tauri,dev" --apply`
@@ -28,6 +38,9 @@ import { loadEnvFile } from "./config/loadEnv.js";
 import { applyPlan } from "./generator/apply.js";
 import { generateScaffold } from "./generator/scaffold/index.js";
 import type { Plan, PlanActionType } from "./generator/types.js";
+import { runAgent } from "./agent/runtime.js";
+import { implementOnce } from "./implement/implementLoop.js";
+import type { ImplementTarget } from "./implement/types.js";
 import { getProviderFromEnv } from "./llm/index.js";
 import { repairOnce } from "./repair/repairLoop.js";
 import { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
@@ -37,12 +50,17 @@ import { runGraphWithOptions } from "./workflow/runGraph.js";
 type CliOptions = {
   specPath?: string;
   outDir?: string;
+  agent: boolean;
+  goal?: string;
+  implement: boolean;
   plan: boolean;
   apply: boolean;
   llmEnrichSpec: boolean;
   verify: boolean;
   useLanggraph: boolean;
   repair: boolean;
+  target?: string;
+  maxPatches: number;
   project?: string;
   cmd?: string;
   cmdArgs: string[];
@@ -59,12 +77,17 @@ const printValidationErrors = (error: ZodError): void => {
 const parseArgs = (argv: string[]): CliOptions => {
   let specPath: string | undefined;
   let outDir: string | undefined;
+  let agent = false;
+  let goal: string | undefined;
+  let implement = false;
   let plan = false;
   let apply = false;
   let llmEnrichSpec = false;
   let verify = false;
   let useLanggraph = false;
   let repair = false;
+  let target: string | undefined;
+  let maxPatches = 6;
   let project: string | undefined;
   let cmd: string | undefined;
   let cmdArgs: string[] = [];
@@ -87,6 +110,23 @@ const parseArgs = (argv: string[]): CliOptions => {
       i += 1;
       continue;
     }
+    if (arg === "--goal") {
+      goal = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--target") {
+      target = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--max-patches") {
+      const raw = Number(argv[i + 1]);
+      const parsed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 6;
+      maxPatches = Math.min(8, parsed);
+      i += 1;
+      continue;
+    }
     if (arg === "--cmd") {
       cmd = argv[i + 1];
       i += 1;
@@ -103,6 +143,14 @@ const parseArgs = (argv: string[]): CliOptions => {
     }
     if (arg === "--plan") {
       plan = true;
+      continue;
+    }
+    if (arg === "--implement") {
+      implement = true;
+      continue;
+    }
+    if (arg === "--agent") {
+      agent = true;
       continue;
     }
     if (arg === "--apply") {
@@ -131,7 +179,24 @@ const parseArgs = (argv: string[]): CliOptions => {
     }
   }
 
-  return { specPath, outDir, plan, apply, llmEnrichSpec, verify, useLanggraph, repair, project, cmd, cmdArgs };
+  return {
+    specPath,
+    outDir,
+    agent,
+    goal,
+    implement,
+    plan,
+    apply,
+    llmEnrichSpec,
+    verify,
+    useLanggraph,
+    repair,
+    target,
+    maxPatches,
+    project,
+    cmd,
+    cmdArgs
+  };
 };
 
 const summarizePlan = (plan: Plan): Record<PlanActionType, number> => {
@@ -169,8 +234,10 @@ const usage = (): void => {
   console.error("- pnpm dev -- <spec.json>");
   console.error("- pnpm dev -- <spec.json> --out <dir> --plan");
   console.error("- pnpm dev -- <spec.json> --out <dir> --apply");
+  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> --apply --verify --repair");
   console.error("- pnpm dev -- <spec.json> --out <dir> --apply --verify --repair --use-langgraph");
   console.error("- pnpm dev --repair --project <path> --cmd <cmd> --args \"a,b,c\" --apply");
+  console.error("- pnpm dev --implement --project <path> --spec <spec.json> --target <ui|business|commands:name> --apply");
 };
 
 const runRepair = async (options: CliOptions): Promise<void> => {
@@ -193,6 +260,85 @@ const runRepair = async (options: CliOptions): Promise<void> => {
     console.log("Patch files:");
     result.patchPaths.forEach((path) => console.log(`- ${path}`));
   }
+};
+
+const parseTarget = (raw: string | undefined): ImplementTarget => {
+  if (!raw || raw === "ui") return { kind: "ui" };
+  if (raw === "business") return { kind: "business" };
+  if (raw.startsWith("commands:")) {
+    const name = raw.slice("commands:".length).trim();
+    if (!name) throw new Error("target commands:<name> requires a command name");
+    return { kind: "commands", name };
+  }
+  throw new Error(`Invalid target: ${raw}`);
+};
+
+const runImplement = async (options: CliOptions): Promise<void> => {
+  if (!options.project || !options.specPath) {
+    throw new Error("--implement requires --project and --spec");
+  }
+
+  const target = parseTarget(options.target);
+  const result = await implementOnce({
+    projectRoot: options.project,
+    specPath: options.specPath,
+    target,
+    maxPatches: options.maxPatches,
+    apply: options.apply,
+    verify: options.verify,
+    repair: options.repair
+  });
+
+  console.log(`Implement result: ${result.ok ? "ok" : "failed"}`);
+  console.log(result.summary);
+
+  if (result.changedPaths.length > 0) {
+    console.log("OVERWRITE candidates:");
+    result.changedPaths.forEach((path) => console.log(`- ${path}`));
+  }
+
+  if (result.patchPaths.length > 0) {
+    console.log("PATCH files:");
+    result.patchPaths.forEach((path) => console.log(`- ${path}`));
+  }
+
+  if (result.verify) {
+    console.log(`Verify: ok=${String(result.verify.ok)} code=${String(result.verify.code)}`);
+    if (!result.verify.ok) {
+      const shortErr = result.verify.stderr.slice(0, 800);
+      console.log(`Verify stderr: ${shortErr}`);
+      console.log("Next step: inspect patch files and rerun with --repair or fix manually.");
+    }
+  }
+
+  process.exitCode = result.ok ? 0 : 1;
+};
+
+const runAgentMode = async (options: CliOptions): Promise<void> => {
+  if (!options.goal || !options.specPath || !options.outDir) {
+    throw new Error("--agent requires --goal, --spec and --out");
+  }
+
+  const result = await runAgent({
+    goal: options.goal,
+    specPath: options.specPath,
+    outDir: options.outDir,
+    apply: options.apply,
+    verify: options.verify,
+    repair: options.repair
+  });
+
+  console.log(`Agent result: ${result.ok ? "ok" : "failed"}`);
+  console.log(result.summary);
+  if (result.auditPath) {
+    console.log(`Audit log: ${result.auditPath}`);
+  }
+  if (result.patchPaths && result.patchPaths.length > 0) {
+    console.log("Patch files:");
+    result.patchPaths.forEach((path) => console.log(`- ${path}`));
+  }
+
+  process.exitCode = result.ok ? 0 : 1;
 };
 
 const runGenerate = async (options: CliOptions): Promise<void> => {
@@ -255,6 +401,16 @@ const main = async (): Promise<void> => {
   const options = parseArgs(process.argv.slice(2));
 
   try {
+    if (options.agent) {
+      await runAgentMode(options);
+      return;
+    }
+
+    if (options.implement) {
+      await runImplement(options);
+      return;
+    }
+
     if (options.useLanggraph) {
       const result = await runGraphWithOptions({
         specPath: options.specPath,

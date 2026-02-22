@@ -1,13 +1,15 @@
 export type Zone = "generated" | "user" | "unknown";
 
 const isUnder = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`);
+const hasGeneratedSegment = (path: string): boolean => path.split("/").includes("generated");
 
 export const classifyPath = (relativePath: string): Zone => {
   const normalized = relativePath.replace(/\\/g, "/").replace(/^\//, "");
 
   if (
-    isUnder(normalized, "src/lib/generated") ||
-    isUnder(normalized, "src-tauri/src/generated") ||
+    isUnder(normalized, "generated") ||
+    (isUnder(normalized, "src/lib") && hasGeneratedSegment(normalized)) ||
+    (isUnder(normalized, "src-tauri/src") && hasGeneratedSegment(normalized)) ||
     isUnder(normalized, "src-tauri/migrations/generated") ||
     isUnder(normalized, "src/lib/screens/generated") ||
     isUnder(normalized, "src/lib/components/generated") ||
