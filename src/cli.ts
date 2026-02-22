@@ -10,6 +10,7 @@
  * - `cd <outDir>/<app-slug>`
  * - `pnpm install`
  * - `pnpm tauri dev`
+ * - In the app window, use Commands Demo to run a generated command and List Runs.
  */
 import process from "node:process";
 import { ZodError } from "zod";

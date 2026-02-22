@@ -1,23 +1,27 @@
 import type { SpecIR } from "../../spec/schema.js";
+import { buildCommandsPlan } from "../commands/planCommands.js";
 import { buildDbPlan } from "../db/planDb.js";
 import { buildPlan } from "../plan.js";
 import type { Plan } from "../types.js";
 
-const mergePlans = (scaffoldPlan: Plan, dbPlan: Plan): Plan => {
-  const byPath = new Map<string, (typeof scaffoldPlan.actions)[number]>();
+const mergePlans = (...plans: Plan[]): Plan => {
+  const [first] = plans;
+  if (!first) {
+    throw new Error("No plans to merge");
+  }
 
-  scaffoldPlan.actions.forEach((action) => {
-    byPath.set(`${action.entryType}:${action.path}`, action);
-  });
+  const byPath = new Map<string, Plan["actions"][number]>();
 
-  dbPlan.actions.forEach((action) => {
-    byPath.set(`${action.entryType}:${action.path}`, action);
+  plans.forEach((plan) => {
+    plan.actions.forEach((action) => {
+      byPath.set(`${action.entryType}:${action.path}`, action);
+    });
   });
 
   const actions = Array.from(byPath.values()).sort((left, right) => left.path.localeCompare(right.path));
   return {
-    outDir: scaffoldPlan.outDir,
-    appDir: scaffoldPlan.appDir,
+    outDir: first.outDir,
+    appDir: first.appDir,
     actions
   };
 };
@@ -25,5 +29,6 @@ const mergePlans = (scaffoldPlan: Plan, dbPlan: Plan): Plan => {
 export const generateScaffold = async (ir: SpecIR, outDir: string): Promise<Plan> => {
   const scaffoldPlan = buildPlan(ir, outDir);
   const dbPlan = buildDbPlan(ir, outDir);
-  return mergePlans(scaffoldPlan, dbPlan);
+  const commandsPlan = buildCommandsPlan(ir, outDir);
+  return mergePlans(scaffoldPlan, dbPlan, commandsPlan);
 };
