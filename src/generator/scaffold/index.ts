@@ -3,6 +3,7 @@ import { buildCommandsPlan } from "../commands/planCommands.js";
 import { buildDbPlan } from "../db/planDb.js";
 import { buildPlan } from "../plan.js";
 import type { Plan } from "../types.js";
+import { buildUIAPlan } from "../ui/planUIA.js";
 
 const mergePlans = (...plans: Plan[]): Plan => {
   const [first] = plans;
@@ -30,5 +31,6 @@ export const generateScaffold = async (ir: SpecIR, outDir: string): Promise<Plan
   const scaffoldPlan = buildPlan(ir, outDir);
   const dbPlan = buildDbPlan(ir, outDir);
   const commandsPlan = buildCommandsPlan(ir, outDir);
-  return mergePlans(scaffoldPlan, dbPlan, commandsPlan);
+  const uiAPlan = buildUIAPlan(ir, outDir);
+  return mergePlans(scaffoldPlan, dbPlan, commandsPlan, uiAPlan);
 };
