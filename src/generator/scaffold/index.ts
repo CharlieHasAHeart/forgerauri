@@ -1,4 +1,5 @@
 import type { SpecIR } from "../../spec/schema.js";
+import { buildBusinessPlan } from "../business/planBusiness.js";
 import { buildCommandsPlan } from "../commands/planCommands.js";
 import { buildDbPlan } from "../db/planDb.js";
 import { buildPlan } from "../plan.js";
@@ -34,5 +35,6 @@ export const generateScaffold = async (ir: SpecIR, outDir: string): Promise<Plan
   const commandsPlan = buildCommandsPlan(ir, outDir);
   const uiAPlan = buildUIAPlan(ir, outDir);
   const uiBPlan = buildUIBPlan(ir, outDir);
-  return mergePlans(scaffoldPlan, dbPlan, commandsPlan, uiAPlan, uiBPlan);
+  const businessPlan = buildBusinessPlan(ir, outDir);
+  return mergePlans(scaffoldPlan, dbPlan, commandsPlan, uiAPlan, uiBPlan, businessPlan);
 };

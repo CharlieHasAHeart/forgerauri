@@ -10,7 +10,8 @@
  * - `cd <outDir>/<app-slug>`
  * - `pnpm install`
  * - `pnpm tauri dev`
- * - In the app window, switch Screens navigation and use action Run to execute bound commands.
+ * - In the app window, switch Screens navigation and use action Run to execute lint_config/apply_fixes.
+ * - Then run list_lint_runs/list_fix_runs from action command selector to verify DB history increases.
  * - In the app window, use Commands Demo to run a generated command and List Runs.
  */
 import process from "node:process";
