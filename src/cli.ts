@@ -5,8 +5,6 @@
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply`
  * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
- * - `pnpm dev --implement --project ./generated/agnix --spec /mnt/data/agent-sh__agnix.json --target ui --apply --verify`
- * - `pnpm dev --implement --project ./generated/agnix --spec /mnt/data/agent-sh__agnix.json --target commands:lint_config --apply --verify --repair`
  * - `pnpm dev --agent --goal "Generate and run the app, ensure DB health check works" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Improve UI: better layout, loading states, error banners" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Implement real lint_config logic and persist results" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
@@ -18,9 +16,6 @@
  *
  * LLM enrich:
  * - `DASHSCOPE_API_KEY=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply --llm-enrich-spec`
- *
- * Repair:
- * - `OPENAI_API_KEY=... OPENAI_MODEL=... pnpm dev --repair --project ./generated/<appSlug> --cmd pnpm --args "tauri,dev" --apply`
  *
  * After scaffold generation:
  * - `cd <outDir>/<app-slug>`
@@ -37,10 +32,7 @@ import { applyPlan } from "./generator/apply.js";
 import { generateScaffold } from "./generator/scaffold/index.js";
 import type { Plan, PlanActionType } from "./generator/types.js";
 import { runAgent } from "./agent/runtime.js";
-import { implementOnce } from "./implement/implementLoop.js";
-import type { ImplementTarget } from "./implement/types.js";
 import { getProviderFromEnv } from "./llm/index.js";
-import { repairOnce } from "./repair/repairLoop.js";
 import { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
 import { loadSpec, parseSpecFromRaw } from "./spec/loadSpec.js";
 
@@ -49,17 +41,16 @@ type CliOptions = {
   outDir?: string;
   agent: boolean;
   goal?: string;
-  implement: boolean;
   plan: boolean;
   apply: boolean;
+  applySpecified: boolean;
   llmEnrichSpec: boolean;
   verify: boolean;
+  verifySpecified: boolean;
   repair: boolean;
-  target?: string;
+  repairSpecified: boolean;
+  maxTurns: number;
   maxPatches: number;
-  project?: string;
-  cmd?: string;
-  cmdArgs: string[];
 };
 
 const printValidationErrors = (error: ZodError): void => {
@@ -75,17 +66,16 @@ const parseArgs = (argv: string[]): CliOptions => {
   let outDir: string | undefined;
   let agent = false;
   let goal: string | undefined;
-  let implement = false;
   let plan = false;
   let apply = false;
+  let applySpecified = false;
   let llmEnrichSpec = false;
   let verify = false;
+  let verifySpecified = false;
   let repair = false;
-  let target: string | undefined;
+  let repairSpecified = false;
+  let maxTurns = 8;
   let maxPatches = 6;
-  let project: string | undefined;
-  let cmd: string | undefined;
-  let cmdArgs: string[] = [];
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -100,18 +90,15 @@ const parseArgs = (argv: string[]): CliOptions => {
       i += 1;
       continue;
     }
-    if (arg === "--project") {
-      project = argv[i + 1];
-      i += 1;
-      continue;
-    }
     if (arg === "--goal") {
       goal = argv[i + 1];
       i += 1;
       continue;
     }
-    if (arg === "--target") {
-      target = argv[i + 1];
+    if (arg === "--max-turns") {
+      const raw = Number(argv[i + 1]);
+      const parsed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
+      maxTurns = Math.max(1, parsed);
       i += 1;
       continue;
     }
@@ -122,26 +109,8 @@ const parseArgs = (argv: string[]): CliOptions => {
       i += 1;
       continue;
     }
-    if (arg === "--cmd") {
-      cmd = argv[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--args") {
-      const raw = argv[i + 1] ?? "";
-      cmdArgs = raw
-        .split(",")
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0);
-      i += 1;
-      continue;
-    }
     if (arg === "--plan") {
       plan = true;
-      continue;
-    }
-    if (arg === "--implement") {
-      implement = true;
       continue;
     }
     if (arg === "--agent") {
@@ -150,6 +119,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     }
     if (arg === "--apply") {
       apply = true;
+      applySpecified = true;
       continue;
     }
     if (arg === "--llm-enrich-spec") {
@@ -158,10 +128,12 @@ const parseArgs = (argv: string[]): CliOptions => {
     }
     if (arg === "--verify") {
       verify = true;
+      verifySpecified = true;
       continue;
     }
     if (arg === "--repair") {
       repair = true;
+      repairSpecified = true;
       continue;
     }
 
@@ -175,17 +147,16 @@ const parseArgs = (argv: string[]): CliOptions => {
     outDir,
     agent,
     goal,
-    implement,
     plan,
     apply,
+    applySpecified,
     llmEnrichSpec,
     verify,
+    verifySpecified,
     repair,
-    target,
+    repairSpecified,
+    maxTurns,
     maxPatches,
-    project,
-    cmd,
-    cmdArgs
   };
 };
 
@@ -221,86 +192,8 @@ const printPlan = (plan: Plan): void => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- pnpm dev -- <spec.json>");
-  console.error("- pnpm dev -- <spec.json> --out <dir> --plan");
-  console.error("- pnpm dev -- <spec.json> --out <dir> --apply");
-  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> --apply --verify --repair");
-  console.error("- pnpm dev --repair --project <path> --cmd <cmd> --args \"a,b,c\" --apply");
-  console.error("- pnpm dev --implement --project <path> --spec <spec.json> --target <ui|business|commands:name> --apply");
-};
-
-const runRepair = async (options: CliOptions): Promise<void> => {
-  if (!options.project || !options.cmd) {
-    throw new Error("--repair requires --project and --cmd");
-  }
-
-  const provider = getProviderFromEnv();
-  const result = await repairOnce({
-    projectRoot: options.project,
-    cmd: options.cmd,
-    args: options.cmdArgs,
-    provider,
-    apply: options.apply
-  });
-
-  console.log(`Repair result: ${result.ok ? "ok" : "failed"}`);
-  console.log(result.summary);
-  if (result.patchPaths && result.patchPaths.length > 0) {
-    console.log("Patch files:");
-    result.patchPaths.forEach((path) => console.log(`- ${path}`));
-  }
-};
-
-const parseTarget = (raw: string | undefined): ImplementTarget => {
-  if (!raw || raw === "ui") return { kind: "ui" };
-  if (raw === "business") return { kind: "business" };
-  if (raw.startsWith("commands:")) {
-    const name = raw.slice("commands:".length).trim();
-    if (!name) throw new Error("target commands:<name> requires a command name");
-    return { kind: "commands", name };
-  }
-  throw new Error(`Invalid target: ${raw}`);
-};
-
-const runImplement = async (options: CliOptions): Promise<void> => {
-  if (!options.project || !options.specPath) {
-    throw new Error("--implement requires --project and --spec");
-  }
-
-  const target = parseTarget(options.target);
-  const result = await implementOnce({
-    projectRoot: options.project,
-    specPath: options.specPath,
-    target,
-    maxPatches: options.maxPatches,
-    apply: options.apply,
-    verify: options.verify,
-    repair: options.repair
-  });
-
-  console.log(`Implement result: ${result.ok ? "ok" : "failed"}`);
-  console.log(result.summary);
-
-  if (result.changedPaths.length > 0) {
-    console.log("OVERWRITE candidates:");
-    result.changedPaths.forEach((path) => console.log(`- ${path}`));
-  }
-
-  if (result.patchPaths.length > 0) {
-    console.log("PATCH files:");
-    result.patchPaths.forEach((path) => console.log(`- ${path}`));
-  }
-
-  if (result.verify) {
-    console.log(`Verify: ok=${String(result.verify.ok)} code=${String(result.verify.code)}`);
-    if (!result.verify.ok) {
-      const shortErr = result.verify.stderr.slice(0, 800);
-      console.log(`Verify stderr: ${shortErr}`);
-      console.log("Next step: inspect patch files and rerun with --repair or fix manually.");
-    }
-  }
-
-  process.exitCode = result.ok ? 0 : 1;
+  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--llm-enrich-spec] [--verify] [--repair] [--max-turns N] [--max-patches N]");
+  console.error("- Optional basic scaffold: pnpm dev -- <spec.json> --out <dir> --plan|--apply");
 };
 
 const runAgentMode = async (options: CliOptions): Promise<void> => {
@@ -308,13 +201,23 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     throw new Error("--agent requires --goal, --spec and --out");
   }
 
+  const apply = options.applySpecified ? options.apply : true;
+  const verify = options.verifySpecified ? options.verify : true;
+  const repair = options.repairSpecified ? options.repair : true;
+  const finalApply = options.plan ? false : apply;
+  const finalVerify = options.plan ? false : verify;
+  const finalRepair = options.plan ? false : repair;
+
   const result = await runAgent({
     goal: options.goal,
     specPath: options.specPath,
     outDir: options.outDir,
-    apply: options.apply,
-    verify: options.verify,
-    repair: options.repair
+    apply: finalApply,
+    verify: finalVerify,
+    repair: finalRepair,
+    llmEnrichSpec: options.llmEnrichSpec,
+    maxTurns: options.maxTurns,
+    maxPatches: options.maxPatches
   });
 
   console.log(`Agent result: ${result.ok ? "ok" : "failed"}`);
@@ -392,16 +295,6 @@ const main = async (): Promise<void> => {
   try {
     if (options.agent) {
       await runAgentMode(options);
-      return;
-    }
-
-    if (options.implement) {
-      await runImplement(options);
-      return;
-    }
-
-    if (options.repair) {
-      await runRepair(options);
       return;
     }
 

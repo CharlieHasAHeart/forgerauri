@@ -1,44 +1,17 @@
 import { readFile, readdir } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { z } from "zod";
-import { applyPlan } from "../../generator/apply.js";
-import { generateScaffold } from "../../generator/scaffold/index.js";
-import type { Plan, PlanActionType } from "../../generator/types.js";
 import { implementOnce } from "../../implement/implementLoop.js";
 import { repairOnce } from "../../repair/repairLoop.js";
-import { runCmd } from "../../runner/runCmd.js";
 import { assertCommandAllowed } from "../../runtime/policy.js";
-import { loadSpec } from "../../spec/loadSpec.js";
-import type { ToolResult, ToolRunContext, ToolSpec } from "./types.js";
+import { bootstrapProjectInputSchema, runBootstrapProject } from "./bootstrapProject.js";
+import { verifyProjectInputSchema, runVerifyProject } from "./verifyProject.js";
+import type { ToolRunContext, ToolSpec } from "./types.js";
 
 const toJsonSchema = (schema: z.ZodTypeAny): unknown => {
-  const anyZ = z as unknown as { toJSONSchema?: (schema: z.ZodTypeAny) => unknown };
-  if (typeof anyZ.toJSONSchema === "function") {
-    return anyZ.toJSONSchema(schema);
-  }
-  return { type: "object", note: "json schema unavailable" };
-};
-
-const summarizePlan = (plan: Plan): Record<PlanActionType, number> => {
-  const counts: Record<PlanActionType, number> = { CREATE: 0, OVERWRITE: 0, SKIP: 0, PATCH: 0 };
-  plan.actions.forEach((action) => {
-    counts[action.type] += 1;
-  });
-  return counts;
-};
-
-const relativeInside = (root: string, value: string): string => {
-  const abs = isAbsolute(value) ? value : resolve(root, value);
-  const rel = relative(resolve(root), abs);
-  if (rel === ".." || rel.startsWith(`..${sep}`) || rel.split(sep).includes("..")) {
-    throw new Error(`Path escapes root: ${value}`);
-  }
-  return rel.split(sep).join("/");
-};
-
-const pushTouched = (ctx: ToolRunContext, paths: string[]): void => {
-  const merged = Array.from(new Set([...ctx.memory.touchedPaths, ...paths]));
-  ctx.memory.touchedPaths = merged;
+  const anyZ = z as unknown as { toJSONSchema?: (s: z.ZodTypeAny) => unknown };
+  if (typeof anyZ.toJSONSchema === "function") return anyZ.toJSONSchema(schema);
+  return { type: "object" };
 };
 
 const parseTarget = (raw: string): { kind: "ui" } | { kind: "business" } | { kind: "commands"; name: string } => {
@@ -64,205 +37,114 @@ const globToRegex = (glob: string): RegExp => {
 const listFiles = async (root: string): Promise<string[]> => {
   const stack = [root];
   const out: string[] = [];
-
   while (stack.length > 0) {
     const current = stack.pop() as string;
-    let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
     try {
-      entries = await readdir(current, { withFileTypes: true }) as Array<{ name: string; isDirectory: () => boolean }>;
+      const entries = await readdir(current, { withFileTypes: true });
+      entries.forEach((entry) => {
+        const full = join(current, entry.name);
+        if (entry.isDirectory()) stack.push(full);
+        else out.push(full.replace(`${root}/`, "").replace(/\\/g, "/"));
+      });
     } catch {
       continue;
     }
-
-    entries.forEach((entry) => {
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else {
-        out.push(relative(root, full).split(sep).join("/"));
-      }
-    });
   }
-
   return out.sort((a, b) => a.localeCompare(b));
 };
 
-const tool_load_spec_input = z.object({ specPath: z.string().min(1) });
-const tool_build_plan_input = z.object({
-  specPath: z.string().min(1),
-  outDir: z.string().min(1),
-  flags: z
-    .object({
-      uiA: z.boolean().optional(),
-      uiB: z.boolean().optional(),
-      business: z.boolean().optional(),
-      commands: z.boolean().optional(),
-      db: z.boolean().optional(),
-      scaffold: z.boolean().optional()
-    })
-    .optional()
-});
-const tool_apply_plan_input = z.object({
-  outDir: z.string().min(1),
-  plan: z.unknown().optional()
-});
-const tool_run_cmd_input = z.object({
-  cwd: z.string().min(1),
-  cmd: z.string().min(1),
-  args: z.array(z.string())
-});
-const tool_repair_once_input = z.object({
-  projectRoot: z.string().min(1),
-  cmd: z.string().min(1),
-  args: z.array(z.string())
-});
-const tool_implement_once_input = z.object({
-  projectRoot: z.string().min(1),
-  specPath: z.string().min(1),
-  target: z.string().min(1),
-  apply: z.boolean(),
-  verify: z.boolean(),
-  repair: z.boolean(),
-  maxPatches: z.number().int().min(1).max(8).optional()
-});
-const tool_read_files_input = z.object({
-  projectRoot: z.string().min(1),
-  globs: z.array(z.string()).min(1),
-  maxChars: z.number().int().positive().max(200000).optional()
-});
-
-const tool_load_spec: ToolSpec<z.infer<typeof tool_load_spec_input>> = {
-  name: "tool_load_spec",
-  description: "Load and validate spec into SpecIR.",
-  inputSchema: tool_load_spec_input,
-  inputJsonSchema: toJsonSchema(tool_load_spec_input),
+const tool_bootstrap_project: ToolSpec<z.infer<typeof bootstrapProjectInputSchema>> = {
+  name: "tool_bootstrap_project",
+  description: "High-level bootstrap: load spec, optional llm enrich, build plan, apply plan.",
+  inputSchema: bootstrapProjectInputSchema,
+  inputJsonSchema: toJsonSchema(bootstrapProjectInputSchema),
   run: async (input, ctx) => {
     try {
-      const ir = await loadSpec(input.specPath);
+      const result = await runBootstrapProject({
+        specPath: input.specPath,
+        outDir: input.outDir,
+        apply: input.apply,
+        llmEnrich: input.llmEnrich,
+        provider: ctx.provider
+      });
+
       ctx.memory.specPath = input.specPath;
-      ctx.memory.ir = ir;
-      return {
-        ok: true,
-        data: {
-          app: ir.app,
-          screens: ir.screens.length,
-          commands: ir.rust_commands.map((c) => c.name)
-        }
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        error: {
-          code: "LOAD_SPEC_FAILED",
-          message: error instanceof Error ? error.message : "load spec failed"
-        }
-      };
-    }
-  }
-};
-
-const tool_build_plan: ToolSpec<z.infer<typeof tool_build_plan_input>> = {
-  name: "tool_build_plan",
-  description: "Build full deterministic plan for scaffold+db+commands+ui+business.",
-  inputSchema: tool_build_plan_input,
-  inputJsonSchema: toJsonSchema(tool_build_plan_input),
-  run: async (input, ctx) => {
-    try {
-      const ir = ctx.memory.ir ?? (await loadSpec(input.specPath));
-      const plan = await generateScaffold(ir, input.outDir);
-      const summary = summarizePlan(plan);
-      ctx.memory.ir = ir;
       ctx.memory.outDir = input.outDir;
-      ctx.memory.plan = plan;
-      ctx.memory.appDir = plan.appDir;
-      pushTouched(ctx, plan.actions.map((action) => relativeInside(plan.appDir, action.path)).slice(0, 200));
+      ctx.memory.appDir = result.appDir;
+      ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.applySummary.patchPaths]));
+
       return {
         ok: true,
-        data: {
-          appDir: plan.appDir,
-          summary,
-          actions: plan.actions.length
-        },
+        data: result,
         meta: {
-          touchedPaths: plan.actions.map((action) => action.path)
+          touchedPaths: [result.appDir, ...result.applySummary.patchPaths]
         }
       };
     } catch (error) {
       return {
         ok: false,
         error: {
-          code: "BUILD_PLAN_FAILED",
-          message: error instanceof Error ? error.message : "build plan failed"
+          code: "BOOTSTRAP_FAILED",
+          message: error instanceof Error ? error.message : "bootstrap failed"
         }
       };
     }
   }
 };
 
-const tool_apply_plan: ToolSpec<z.infer<typeof tool_apply_plan_input>> = {
-  name: "tool_apply_plan",
-  description: "Apply current plan via Plan/Apply guardrails, producing patch files for user-zone changes.",
-  inputSchema: tool_apply_plan_input,
-  inputJsonSchema: toJsonSchema(tool_apply_plan_input),
+const tool_verify_project: ToolSpec<z.infer<typeof verifyProjectInputSchema>> = {
+  name: "tool_verify_project",
+  description: "High-level verify gate with fixed order: install -> build -> cargo_check -> tauri_check.",
+  inputSchema: verifyProjectInputSchema,
+  inputJsonSchema: toJsonSchema(verifyProjectInputSchema),
   run: async (input, ctx) => {
     try {
-      const plan = (input.plan as Plan | undefined) ?? ctx.memory.plan;
-      if (!plan) {
-        return {
-          ok: false,
-          error: {
-            code: "PLAN_MISSING",
-            message: "No plan in tool input or runtime memory"
-          }
-        };
-      }
-
-      const applied = await applyPlan(plan, { apply: ctx.flags.apply });
-      const summary = summarizePlan(plan);
-      ctx.memory.applySummary = {
-        ...summary,
-        patchPaths: applied.patchFiles,
-        apply: ctx.flags.apply
+      const result = await runVerifyProject({
+        projectRoot: input.projectRoot,
+        runCmdImpl: ctx.runCmdImpl
+      });
+      ctx.memory.verifyResult = {
+        ok: result.ok,
+        code: result.ok ? 0 : 1,
+        stdout: result.results.map((r) => `[${r.name}] ${r.stdout}`).join("\n"),
+        stderr: result.results.map((r) => `[${r.name}] ${r.stderr}`).join("\n")
       };
-      if (applied.patchFiles.length > 0) {
-        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...applied.patchFiles]));
-      }
-
       return {
-        ok: true,
-        data: {
-          apply: ctx.flags.apply,
-          summary,
-          patchPaths: applied.patchFiles
-        },
+        ok: result.ok,
+        data: result,
+        error: result.ok
+          ? undefined
+          : {
+              code: "VERIFY_FAILED",
+              message: result.summary,
+              detail: result.suggestion
+            },
         meta: {
-          touchedPaths: plan.actions.map((action) => action.path)
+          touchedPaths: [input.projectRoot]
         }
       };
     } catch (error) {
       return {
         ok: false,
         error: {
-          code: "APPLY_PLAN_FAILED",
-          message: error instanceof Error ? error.message : "apply plan failed"
+          code: "VERIFY_FAILED",
+          message: error instanceof Error ? error.message : "verify failed"
         }
       };
     }
   }
 };
 
+const tool_run_cmd_input = z.object({ cwd: z.string().min(1), cmd: z.string().min(1), args: z.array(z.string()) });
 const tool_run_cmd: ToolSpec<z.infer<typeof tool_run_cmd_input>> = {
   name: "tool_run_cmd",
-  description: "Run whitelisted command and capture stdout/stderr.",
+  description: "Low-level command runner with whitelist enforcement.",
   inputSchema: tool_run_cmd_input,
   inputJsonSchema: toJsonSchema(tool_run_cmd_input),
   run: async (input, ctx) => {
     try {
       assertCommandAllowed(input.cmd);
       const result = await ctx.runCmdImpl(input.cmd, input.args, input.cwd);
-      if (ctx.flags.verify) {
-        ctx.memory.verifyResult = result;
-      }
       return {
         ok: result.ok,
         data: result,
@@ -271,8 +153,11 @@ const tool_run_cmd: ToolSpec<z.infer<typeof tool_run_cmd_input>> = {
           : {
               code: "CMD_FAILED",
               message: `Command failed with code ${result.code}`,
-              detail: result.stderr.slice(0, 2000)
-            }
+              detail: result.stderr.slice(0, 3000)
+            },
+        meta: {
+          touchedPaths: [input.cwd]
+        }
       };
     } catch (error) {
       return {
@@ -286,9 +171,15 @@ const tool_run_cmd: ToolSpec<z.infer<typeof tool_run_cmd_input>> = {
   }
 };
 
+const tool_repair_once_input = z.object({
+  projectRoot: z.string().min(1),
+  cmd: z.string().min(1),
+  args: z.array(z.string())
+});
+
 const tool_repair_once: ToolSpec<z.infer<typeof tool_repair_once_input>> = {
   name: "tool_repair_once",
-  description: "Single repair loop: analyze failure, produce patches, apply according to zones, and rerun.",
+  description: "Single repair loop against a failed command.",
   inputSchema: tool_repair_once_input,
   inputJsonSchema: toJsonSchema(tool_repair_once_input),
   run: async (input, ctx) => {
@@ -303,10 +194,7 @@ const tool_repair_once: ToolSpec<z.infer<typeof tool_repair_once_input>> = {
         runImpl: ctx.runCmdImpl
       });
 
-      if (result.patchPaths && result.patchPaths.length > 0) {
-        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.patchPaths]));
-      }
-
+      ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...(result.patchPaths ?? [])]));
       return {
         ok: result.ok,
         data: result,
@@ -326,9 +214,19 @@ const tool_repair_once: ToolSpec<z.infer<typeof tool_repair_once_input>> = {
   }
 };
 
+const tool_implement_once_input = z.object({
+  projectRoot: z.string().min(1),
+  specPath: z.string().min(1),
+  target: z.string().min(1),
+  apply: z.boolean(),
+  verify: z.boolean(),
+  repair: z.boolean(),
+  maxPatches: z.number().int().min(1).max(8).optional()
+});
+
 const tool_implement_once: ToolSpec<z.infer<typeof tool_implement_once_input>> = {
   name: "tool_implement_once",
-  description: "LLM-driven implementation patch loop for ui/business/commands targets under zones/apply/verify guardrails.",
+  description: "LLM implementation patch loop for ui/business/commands.",
   inputSchema: tool_implement_once_input,
   inputJsonSchema: toJsonSchema(tool_implement_once_input),
   run: async (input, ctx) => {
@@ -346,15 +244,15 @@ const tool_implement_once: ToolSpec<z.infer<typeof tool_implement_once_input>> =
         runImpl: ctx.runCmdImpl
       });
 
-      if (result.patchPaths.length > 0) {
-        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.patchPaths]));
-      }
-      pushTouched(ctx, result.changedPaths);
+      ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.patchPaths]));
+      ctx.memory.touchedPaths = Array.from(new Set([...ctx.memory.touchedPaths, ...result.changedPaths]));
 
       return {
         ok: result.ok,
         data: result,
-        meta: { touchedPaths: result.changedPaths }
+        meta: {
+          touchedPaths: result.changedPaths
+        }
       };
     } catch (error) {
       return {
@@ -368,9 +266,15 @@ const tool_implement_once: ToolSpec<z.infer<typeof tool_implement_once_input>> =
   }
 };
 
+const tool_read_files_input = z.object({
+  projectRoot: z.string().min(1),
+  globs: z.array(z.string()).min(1),
+  maxChars: z.number().int().positive().max(200000).optional()
+});
+
 const tool_read_files: ToolSpec<z.infer<typeof tool_read_files_input>> = {
   name: "tool_read_files",
-  description: "Read project files with glob filters for contextual analysis.",
+  description: "Read project files using glob patterns for additional context.",
   inputSchema: tool_read_files_input,
   inputJsonSchema: toJsonSchema(tool_read_files_input),
   run: async (input) => {
@@ -382,17 +286,17 @@ const tool_read_files: ToolSpec<z.infer<typeof tool_read_files_input>> = {
 
       const maxChars = input.maxChars ?? 100000;
       let used = 0;
-      const content: Array<{ path: string; content: string; truncated: boolean }> = [];
+      const out: Array<{ path: string; content: string; truncated: boolean }> = [];
 
-      for (const path of picked) {
+      for (const rel of picked) {
         if (used >= maxChars) break;
-        const text = await readFile(join(root, path), "utf8");
+        const text = await readFile(join(root, rel), "utf8");
         const remain = maxChars - used;
         if (text.length <= remain) {
-          content.push({ path, content: text, truncated: false });
+          out.push({ path: rel, content: text, truncated: false });
           used += text.length;
         } else {
-          content.push({ path, content: `${text.slice(0, remain)}\n/* ...truncated... */\n`, truncated: true });
+          out.push({ path: rel, content: `${text.slice(0, remain)}\n/* ...truncated... */\n`, truncated: true });
           used += remain;
           break;
         }
@@ -401,12 +305,12 @@ const tool_read_files: ToolSpec<z.infer<typeof tool_read_files_input>> = {
       return {
         ok: true,
         data: {
-          files: content,
-          total: content.length,
+          files: out,
+          total: out.length,
           totalChars: used
         },
         meta: {
-          touchedPaths: content.map((item) => item.path)
+          touchedPaths: out.map((item) => item.path)
         }
       };
     } catch (error) {
@@ -421,14 +325,172 @@ const tool_read_files: ToolSpec<z.infer<typeof tool_read_files_input>> = {
   }
 };
 
-export const createToolRegistry = (): Record<string, ToolSpec<any>> => {
+export const createToolRegistry = (deps?: {
+  runBootstrapProjectImpl?: typeof runBootstrapProject;
+  runVerifyProjectImpl?: typeof runVerifyProject;
+  repairOnceImpl?: typeof repairOnce;
+  implementOnceImpl?: typeof implementOnce;
+}): Record<string, ToolSpec<any>> => {
+  const runBootstrap = deps?.runBootstrapProjectImpl ?? runBootstrapProject;
+  const runVerify = deps?.runVerifyProjectImpl ?? runVerifyProject;
+  const runRepair = deps?.repairOnceImpl ?? repairOnce;
+  const runImplement = deps?.implementOnceImpl ?? implementOnce;
+
+  const wrappedToolBootstrap = {
+    ...tool_bootstrap_project,
+    run: async (input: z.infer<typeof bootstrapProjectInputSchema>, ctx: ToolRunContext) => {
+      try {
+        const result = await runBootstrap({
+          specPath: input.specPath,
+          outDir: input.outDir,
+          apply: input.apply,
+          llmEnrich: input.llmEnrich,
+          provider: ctx.provider
+        });
+
+        ctx.memory.specPath = input.specPath;
+        ctx.memory.outDir = input.outDir;
+        ctx.memory.appDir = result.appDir;
+        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.applySummary.patchPaths]));
+
+        return {
+          ok: true,
+          data: result,
+          meta: {
+            touchedPaths: [result.appDir, ...result.applySummary.patchPaths]
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "BOOTSTRAP_FAILED",
+            message: error instanceof Error ? error.message : "bootstrap failed"
+          }
+        };
+      }
+    }
+  } satisfies ToolSpec<any>;
+
+  const wrappedToolVerify = {
+    ...tool_verify_project,
+    run: async (input: z.infer<typeof verifyProjectInputSchema>, ctx: ToolRunContext) => {
+      try {
+        const result = await runVerify({
+          projectRoot: input.projectRoot,
+          runCmdImpl: ctx.runCmdImpl
+        });
+        ctx.memory.verifyResult = {
+          ok: result.ok,
+          code: result.ok ? 0 : 1,
+          stdout: result.results.map((r) => `[${r.name}] ${r.stdout}`).join("\n"),
+          stderr: result.results.map((r) => `[${r.name}] ${r.stderr}`).join("\n")
+        };
+        return {
+          ok: result.ok,
+          data: result,
+          error: result.ok
+            ? undefined
+            : {
+                code: "VERIFY_FAILED",
+                message: result.summary,
+                detail: result.suggestion
+              },
+          meta: {
+            touchedPaths: [input.projectRoot]
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "VERIFY_FAILED",
+            message: error instanceof Error ? error.message : "verify failed"
+          }
+        };
+      }
+    }
+  } satisfies ToolSpec<any>;
+
+  const wrappedToolRepair = {
+    ...tool_repair_once,
+    run: async (input: z.infer<typeof tool_repair_once_input>, ctx: ToolRunContext) => {
+      try {
+        const result = await runRepair({
+          projectRoot: input.projectRoot,
+          cmd: input.cmd,
+          args: input.args,
+          provider: ctx.provider,
+          apply: ctx.flags.apply,
+          budget: { maxPatches: ctx.flags.maxPatchesPerTurn },
+          runImpl: ctx.runCmdImpl
+        });
+
+        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...(result.patchPaths ?? [])]));
+        return {
+          ok: result.ok,
+          data: result,
+          meta: {
+            touchedPaths: result.patchPaths ?? []
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "REPAIR_FAILED",
+            message: error instanceof Error ? error.message : "repair failed"
+          }
+        };
+      }
+    }
+  } satisfies ToolSpec<any>;
+
+  const wrappedToolImplement = {
+    ...tool_implement_once,
+    run: async (input: z.infer<typeof tool_implement_once_input>, ctx: ToolRunContext) => {
+      try {
+        const target = parseTarget(input.target);
+        const result = await runImplement({
+          projectRoot: input.projectRoot,
+          specPath: input.specPath,
+          target,
+          maxPatches: input.maxPatches ?? ctx.flags.maxPatchesPerTurn,
+          apply: input.apply,
+          verify: input.verify,
+          repair: input.repair,
+          provider: ctx.provider,
+          runImpl: ctx.runCmdImpl
+        });
+
+        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.patchPaths]));
+        ctx.memory.touchedPaths = Array.from(new Set([...ctx.memory.touchedPaths, ...result.changedPaths]));
+
+        return {
+          ok: result.ok,
+          data: result,
+          meta: {
+            touchedPaths: result.changedPaths
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "IMPLEMENT_FAILED",
+            message: error instanceof Error ? error.message : "implement failed"
+          }
+        };
+      }
+    }
+  } satisfies ToolSpec<any>;
+
   const tools: Array<ToolSpec<any>> = [
-    tool_load_spec,
-    tool_build_plan,
-    tool_apply_plan,
+    wrappedToolBootstrap,
+    wrappedToolVerify,
+    wrappedToolRepair,
+    wrappedToolImplement,
     tool_run_cmd,
-    tool_repair_once,
-    tool_implement_once,
     tool_read_files
   ];
 

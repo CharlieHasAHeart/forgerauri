@@ -7,34 +7,34 @@ describe("brain schema validation", () => {
   test("retries once when tool name is invalid", async () => {
     const provider = new MockProvider([
       JSON.stringify({ toolCalls: [{ name: "tool_not_exists", input: {} }] }),
-      JSON.stringify({ toolCalls: [{ name: "tool_load_spec", input: { specPath: "/tmp/spec.json" } }] })
+      JSON.stringify({ toolCalls: [{ name: "tool_bootstrap_project", input: { specPath: "/tmp/spec.json", outDir: "/tmp/out", apply: true, llmEnrich: false } }] })
     ]);
 
     const out = await proposeNextActions({
-      goal: "load spec",
+      goal: "bootstrap",
       provider,
       registry: createToolRegistry(),
-      stateSummary: { turn: 1 },
+      stateSummary: { phase: "BOOT" },
       maxToolCallsPerTurn: 4
     });
 
-    expect(out.toolCalls[0]?.name).toBe("tool_load_spec");
+    expect(out.toolCalls[0]?.name).toBe("tool_bootstrap_project");
   });
 
   test("retries once when input schema is invalid", async () => {
     const provider = new MockProvider([
-      JSON.stringify({ toolCalls: [{ name: "tool_load_spec", input: { specPath: 123 } }] }),
-      JSON.stringify({ toolCalls: [{ name: "tool_load_spec", input: { specPath: "/tmp/spec.json" } }] })
+      JSON.stringify({ toolCalls: [{ name: "tool_verify_project", input: { projectRoot: 123 } }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_verify_project", input: { projectRoot: "/tmp/out/app" } }] })
     ]);
 
     const out = await proposeNextActions({
-      goal: "load spec",
+      goal: "verify",
       provider,
       registry: createToolRegistry(),
-      stateSummary: { turn: 1 },
+      stateSummary: { phase: "VERIFY" },
       maxToolCallsPerTurn: 4
     });
 
-    expect(out.toolCalls[0]?.name).toBe("tool_load_spec");
+    expect(out.toolCalls[0]?.name).toBe("tool_verify_project");
   });
 });
