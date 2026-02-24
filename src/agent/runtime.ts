@@ -30,9 +30,10 @@ const inferRepairCommand = (state: AgentState): { cmd: string; args: string[]; c
   const root = state.appDir;
   if (!latest || !root || latest.ok) return null;
 
-  if (latest.step === "install") return { cmd: "pnpm", args: ["-C", root, "install"], cwd: root };
-  if (latest.step === "build") return { cmd: "pnpm", args: ["-C", root, "build"], cwd: root };
+  if (latest.step === "install" || latest.step === "install_retry") return { cmd: "pnpm", args: ["-C", root, "install"], cwd: root };
+  if (latest.step === "build" || latest.step === "build_retry") return { cmd: "pnpm", args: ["-C", root, "build"], cwd: root };
   if (latest.step === "cargo_check") return { cmd: "cargo", args: ["check"], cwd: join(root, "src-tauri") };
+  if (latest.step === "tauri_build") return { cmd: "pnpm", args: ["-C", root, "tauri", "build"], cwd: root };
   return { cmd: "pnpm", args: ["-C", root, "tauri", "--help"], cwd: root };
 };
 
@@ -50,6 +51,7 @@ export const runAgent = async (args: {
   verify: boolean;
   repair: boolean;
   llmEnrichSpec?: boolean;
+  verifyLevel?: "basic" | "full";
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
   maxPatches?: number;
@@ -75,7 +77,8 @@ export const runAgent = async (args: {
       apply: args.apply,
       verify: args.verify,
       repair: args.repair,
-      llmEnrich: args.llmEnrichSpec ?? false
+      llmEnrich: args.llmEnrichSpec ?? false,
+      verifyLevel: args.verifyLevel ?? "basic"
     },
     usedLLM: false,
     verifyHistory: [],
@@ -83,7 +86,8 @@ export const runAgent = async (args: {
       maxTurns,
       maxPatches,
       usedTurns: 0,
-      usedPatches: 0
+      usedPatches: 0,
+      usedRepairs: 0
     },
     patchPaths: [],
     touchedFiles: [],
@@ -98,7 +102,8 @@ export const runAgent = async (args: {
       apply: state.flags.apply,
       verify: state.flags.verify,
       repair: state.flags.repair,
-      maxPatchesPerTurn: maxPatches
+      maxPatchesPerTurn: maxPatches,
+      verifyLevel: state.flags.verifyLevel
     },
     memory: {
       specPath: state.specPath,
@@ -136,7 +141,7 @@ export const runAgent = async (args: {
         }
       ];
     } else if (state.phase === "VERIFY" && state.appDir && !toolCalls.some((call) => call.name === "tool_verify_project")) {
-      toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir } }];
+      toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir, verifyLevel: state.flags.verifyLevel } }];
     } else if (state.phase === "REPAIR") {
       const repairCmd = inferRepairCommand(state);
       if (repairCmd && !toolCalls.some((call) => call.name === "tool_repair_once")) {
@@ -151,7 +156,7 @@ export const runAgent = async (args: {
           },
           {
             name: "tool_verify_project",
-            input: { projectRoot: state.appDir }
+            input: { projectRoot: state.appDir, verifyLevel: state.flags.verifyLevel }
           }
         ];
       }
@@ -185,7 +190,6 @@ export const runAgent = async (args: {
       const touched = result.meta?.touchedPaths ?? [];
       state.touchedFiles = Array.from(new Set([...state.touchedFiles, ...touched]));
       state.patchPaths = Array.from(new Set([...state.patchPaths, ...ctx.memory.patchPaths]));
-      state.budgets.usedPatches = state.patchPaths.length;
 
       state.toolResults.push(normalizeToolResults(call.name, result.ok, result.ok ? "ok" : result.error?.message));
       turnAuditResults.push({
@@ -221,6 +225,8 @@ export const runAgent = async (args: {
       }
 
       if (call.name === "tool_repair_once") {
+        state.budgets.usedRepairs += 1;
+        state.budgets.usedPatches = state.budgets.usedRepairs;
         if (!result.ok) {
           state.lastError = {
             kind: state.lastError?.kind ?? "Unknown",
@@ -239,11 +245,11 @@ export const runAgent = async (args: {
         };
       }
 
-      if (state.budgets.usedPatches > state.budgets.maxPatches) {
+      if (state.budgets.usedRepairs > state.budgets.maxPatches) {
         state.phase = "FAILED";
         state.lastError = {
           kind: "Config",
-          message: `Patch budget exceeded: ${state.budgets.usedPatches} > ${state.budgets.maxPatches}`
+          message: `Repair budget exceeded: ${state.budgets.usedRepairs} > ${state.budgets.maxPatches}`
         };
       }
     }

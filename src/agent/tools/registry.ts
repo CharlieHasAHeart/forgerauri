@@ -1,7 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { implementOnce } from "../../implement/implementLoop.js";
 import { repairOnce } from "../../repair/repairLoop.js";
 import { assertCommandAllowed } from "../../runtime/policy.js";
 import { bootstrapProjectInputSchema, runBootstrapProject } from "./bootstrapProject.js";
@@ -12,17 +11,6 @@ const toJsonSchema = (schema: z.ZodTypeAny): unknown => {
   const anyZ = z as unknown as { toJSONSchema?: (s: z.ZodTypeAny) => unknown };
   if (typeof anyZ.toJSONSchema === "function") return anyZ.toJSONSchema(schema);
   return { type: "object" };
-};
-
-const parseTarget = (raw: string): { kind: "ui" } | { kind: "business" } | { kind: "commands"; name: string } => {
-  if (raw === "ui") return { kind: "ui" };
-  if (raw === "business") return { kind: "business" };
-  if (raw.startsWith("commands:")) {
-    const name = raw.slice("commands:".length).trim();
-    if (!name) throw new Error("commands target requires a command name");
-    return { kind: "commands", name };
-  }
-  throw new Error(`Unknown implement target: ${raw}`);
 };
 
 const globToRegex = (glob: string): RegExp => {
@@ -76,9 +64,7 @@ const tool_bootstrap_project: ToolSpec<z.infer<typeof bootstrapProjectInputSchem
       return {
         ok: true,
         data: result,
-        meta: {
-          touchedPaths: [result.appDir, ...result.applySummary.patchPaths]
-        }
+        meta: { touchedPaths: [result.appDir, ...result.applySummary.patchPaths] }
       };
     } catch (error) {
       return {
@@ -94,13 +80,14 @@ const tool_bootstrap_project: ToolSpec<z.infer<typeof bootstrapProjectInputSchem
 
 const tool_verify_project: ToolSpec<z.infer<typeof verifyProjectInputSchema>> = {
   name: "tool_verify_project",
-  description: "High-level verify gate with fixed order: install -> build -> cargo_check -> tauri_check.",
+  description: "High-level verify gate with fixed order and optional full tauri build gate.",
   inputSchema: verifyProjectInputSchema,
   inputJsonSchema: toJsonSchema(verifyProjectInputSchema),
   run: async (input, ctx) => {
     try {
       const result = await runVerifyProject({
         projectRoot: input.projectRoot,
+        verifyLevel: input.verifyLevel,
         runCmdImpl: ctx.runCmdImpl
       });
       ctx.memory.verifyResult = {
@@ -119,9 +106,7 @@ const tool_verify_project: ToolSpec<z.infer<typeof verifyProjectInputSchema>> = 
               message: result.summary,
               detail: result.suggestion
             },
-        meta: {
-          touchedPaths: [input.projectRoot]
-        }
+        meta: { touchedPaths: [input.projectRoot] }
       };
     } catch (error) {
       return {
@@ -155,9 +140,7 @@ const tool_run_cmd: ToolSpec<z.infer<typeof tool_run_cmd_input>> = {
               message: `Command failed with code ${result.code}`,
               detail: result.stderr.slice(0, 3000)
             },
-        meta: {
-          touchedPaths: [input.cwd]
-        }
+        meta: { touchedPaths: [input.cwd] }
       };
     } catch (error) {
       return {
@@ -198,9 +181,7 @@ const tool_repair_once: ToolSpec<z.infer<typeof tool_repair_once_input>> = {
       return {
         ok: result.ok,
         data: result,
-        meta: {
-          touchedPaths: result.patchPaths ?? []
-        }
+        meta: { touchedPaths: result.patchPaths ?? [] }
       };
     } catch (error) {
       return {
@@ -208,58 +189,6 @@ const tool_repair_once: ToolSpec<z.infer<typeof tool_repair_once_input>> = {
         error: {
           code: "REPAIR_FAILED",
           message: error instanceof Error ? error.message : "repair failed"
-        }
-      };
-    }
-  }
-};
-
-const tool_implement_once_input = z.object({
-  projectRoot: z.string().min(1),
-  specPath: z.string().min(1),
-  target: z.string().min(1),
-  apply: z.boolean(),
-  verify: z.boolean(),
-  repair: z.boolean(),
-  maxPatches: z.number().int().min(1).max(8).optional()
-});
-
-const tool_implement_once: ToolSpec<z.infer<typeof tool_implement_once_input>> = {
-  name: "tool_implement_once",
-  description: "LLM implementation patch loop for ui/business/commands.",
-  inputSchema: tool_implement_once_input,
-  inputJsonSchema: toJsonSchema(tool_implement_once_input),
-  run: async (input, ctx) => {
-    try {
-      const target = parseTarget(input.target);
-      const result = await implementOnce({
-        projectRoot: input.projectRoot,
-        specPath: input.specPath,
-        target,
-        maxPatches: input.maxPatches ?? ctx.flags.maxPatchesPerTurn,
-        apply: input.apply,
-        verify: input.verify,
-        repair: input.repair,
-        provider: ctx.provider,
-        runImpl: ctx.runCmdImpl
-      });
-
-      ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.patchPaths]));
-      ctx.memory.touchedPaths = Array.from(new Set([...ctx.memory.touchedPaths, ...result.changedPaths]));
-
-      return {
-        ok: result.ok,
-        data: result,
-        meta: {
-          touchedPaths: result.changedPaths
-        }
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        error: {
-          code: "IMPLEMENT_FAILED",
-          message: error instanceof Error ? error.message : "implement failed"
         }
       };
     }
@@ -304,14 +233,8 @@ const tool_read_files: ToolSpec<z.infer<typeof tool_read_files_input>> = {
 
       return {
         ok: true,
-        data: {
-          files: out,
-          total: out.length,
-          totalChars: used
-        },
-        meta: {
-          touchedPaths: out.map((item) => item.path)
-        }
+        data: { files: out, total: out.length, totalChars: used },
+        meta: { touchedPaths: out.map((item) => item.path) }
       };
     } catch (error) {
       return {
@@ -329,16 +252,14 @@ export const createToolRegistry = (deps?: {
   runBootstrapProjectImpl?: typeof runBootstrapProject;
   runVerifyProjectImpl?: typeof runVerifyProject;
   repairOnceImpl?: typeof repairOnce;
-  implementOnceImpl?: typeof implementOnce;
 }): Record<string, ToolSpec<any>> => {
   const runBootstrap = deps?.runBootstrapProjectImpl ?? runBootstrapProject;
   const runVerify = deps?.runVerifyProjectImpl ?? runVerifyProject;
   const runRepair = deps?.repairOnceImpl ?? repairOnce;
-  const runImplement = deps?.implementOnceImpl ?? implementOnce;
 
-  const wrappedToolBootstrap = {
+  const wrappedToolBootstrap: ToolSpec<any> = {
     ...tool_bootstrap_project,
-    run: async (input: z.infer<typeof bootstrapProjectInputSchema>, ctx: ToolRunContext) => {
+    run: async (input, ctx) => {
       try {
         const result = await runBootstrap({
           specPath: input.specPath,
@@ -347,37 +268,27 @@ export const createToolRegistry = (deps?: {
           llmEnrich: input.llmEnrich,
           provider: ctx.provider
         });
-
         ctx.memory.specPath = input.specPath;
         ctx.memory.outDir = input.outDir;
         ctx.memory.appDir = result.appDir;
         ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.applySummary.patchPaths]));
-
-        return {
-          ok: true,
-          data: result,
-          meta: {
-            touchedPaths: [result.appDir, ...result.applySummary.patchPaths]
-          }
-        };
+        return { ok: true, data: result, meta: { touchedPaths: [result.appDir, ...result.applySummary.patchPaths] } };
       } catch (error) {
         return {
           ok: false,
-          error: {
-            code: "BOOTSTRAP_FAILED",
-            message: error instanceof Error ? error.message : "bootstrap failed"
-          }
+          error: { code: "BOOTSTRAP_FAILED", message: error instanceof Error ? error.message : "bootstrap failed" }
         };
       }
     }
-  } satisfies ToolSpec<any>;
+  };
 
-  const wrappedToolVerify = {
+  const wrappedToolVerify: ToolSpec<any> = {
     ...tool_verify_project,
-    run: async (input: z.infer<typeof verifyProjectInputSchema>, ctx: ToolRunContext) => {
+    run: async (input, ctx) => {
       try {
         const result = await runVerify({
           projectRoot: input.projectRoot,
+          verifyLevel: input.verifyLevel,
           runCmdImpl: ctx.runCmdImpl
         });
         ctx.memory.verifyResult = {
@@ -389,32 +300,21 @@ export const createToolRegistry = (deps?: {
         return {
           ok: result.ok,
           data: result,
-          error: result.ok
-            ? undefined
-            : {
-                code: "VERIFY_FAILED",
-                message: result.summary,
-                detail: result.suggestion
-              },
-          meta: {
-            touchedPaths: [input.projectRoot]
-          }
+          error: result.ok ? undefined : { code: "VERIFY_FAILED", message: result.summary, detail: result.suggestion },
+          meta: { touchedPaths: [input.projectRoot] }
         };
       } catch (error) {
         return {
           ok: false,
-          error: {
-            code: "VERIFY_FAILED",
-            message: error instanceof Error ? error.message : "verify failed"
-          }
+          error: { code: "VERIFY_FAILED", message: error instanceof Error ? error.message : "verify failed" }
         };
       }
     }
-  } satisfies ToolSpec<any>;
+  };
 
-  const wrappedToolRepair = {
+  const wrappedToolRepair: ToolSpec<any> = {
     ...tool_repair_once,
-    run: async (input: z.infer<typeof tool_repair_once_input>, ctx: ToolRunContext) => {
+    run: async (input, ctx) => {
       try {
         const result = await runRepair({
           projectRoot: input.projectRoot,
@@ -425,71 +325,21 @@ export const createToolRegistry = (deps?: {
           budget: { maxPatches: ctx.flags.maxPatchesPerTurn },
           runImpl: ctx.runCmdImpl
         });
-
         ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...(result.patchPaths ?? [])]));
-        return {
-          ok: result.ok,
-          data: result,
-          meta: {
-            touchedPaths: result.patchPaths ?? []
-          }
-        };
+        return { ok: result.ok, data: result, meta: { touchedPaths: result.patchPaths ?? [] } };
       } catch (error) {
         return {
           ok: false,
-          error: {
-            code: "REPAIR_FAILED",
-            message: error instanceof Error ? error.message : "repair failed"
-          }
+          error: { code: "REPAIR_FAILED", message: error instanceof Error ? error.message : "repair failed" }
         };
       }
     }
-  } satisfies ToolSpec<any>;
-
-  const wrappedToolImplement = {
-    ...tool_implement_once,
-    run: async (input: z.infer<typeof tool_implement_once_input>, ctx: ToolRunContext) => {
-      try {
-        const target = parseTarget(input.target);
-        const result = await runImplement({
-          projectRoot: input.projectRoot,
-          specPath: input.specPath,
-          target,
-          maxPatches: input.maxPatches ?? ctx.flags.maxPatchesPerTurn,
-          apply: input.apply,
-          verify: input.verify,
-          repair: input.repair,
-          provider: ctx.provider,
-          runImpl: ctx.runCmdImpl
-        });
-
-        ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.patchPaths]));
-        ctx.memory.touchedPaths = Array.from(new Set([...ctx.memory.touchedPaths, ...result.changedPaths]));
-
-        return {
-          ok: result.ok,
-          data: result,
-          meta: {
-            touchedPaths: result.changedPaths
-          }
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          error: {
-            code: "IMPLEMENT_FAILED",
-            message: error instanceof Error ? error.message : "implement failed"
-          }
-        };
-      }
-    }
-  } satisfies ToolSpec<any>;
+  };
 
   const tools: Array<ToolSpec<any>> = [
     wrappedToolBootstrap,
     wrappedToolVerify,
     wrappedToolRepair,
-    wrappedToolImplement,
     tool_run_cmd,
     tool_read_files
   ];

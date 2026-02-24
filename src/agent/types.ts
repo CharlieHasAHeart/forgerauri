@@ -5,7 +5,7 @@ export type AgentPhase = "BOOT" | "VERIFY" | "REPAIR" | "DONE" | "FAILED";
 export type ErrorKind = "Deps" | "TS" | "Rust" | "Tauri" | "Config" | "Unknown";
 
 export type VerifyStepResult = {
-  name: "install" | "build" | "cargo_check" | "tauri_check";
+  name: "install" | "install_retry" | "build" | "build_retry" | "cargo_check" | "tauri_check" | "tauri_build";
   ok: boolean;
   code: number;
   stdout: string;
@@ -27,6 +27,7 @@ export type AgentBudgets = {
   maxPatches: number;
   usedTurns: number;
   usedPatches: number;
+  usedRepairs: number;
 };
 
 export type AgentState = {
@@ -39,6 +40,7 @@ export type AgentState = {
     verify: boolean;
     repair: boolean;
     llmEnrich: boolean;
+    verifyLevel: "basic" | "full";
   };
   projectRoot?: string;
   appDir?: string;

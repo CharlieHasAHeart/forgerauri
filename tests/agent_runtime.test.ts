@@ -45,12 +45,13 @@ describe("agent runtime", () => {
     expect(result.state.phase).toBe("DONE");
   });
 
-  test("verify success ends in DONE", async () => {
+  test("verify ok ends in DONE and forwards verifyLevel", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
 
     const provider = new MockProvider([emptyCalls, emptyCalls]);
+    const verifyInputs: Array<{ projectRoot: string; verifyLevel: "basic" | "full" }> = [];
 
     const result = await runAgent({
       goal: "bootstrap and verify",
@@ -58,19 +59,32 @@ describe("agent runtime", () => {
       outDir,
       apply: true,
       verify: true,
+      verifyLevel: "full",
       repair: true,
       provider,
-      runCmdImpl: async () => ({ ok: true, code: 0, stdout: "ok", stderr: "" }),
-      maxTurns: 4
+      maxTurns: 4,
+      registryDeps: {
+        runVerifyProjectImpl: async (input) => {
+          verifyInputs.push({ projectRoot: input.projectRoot, verifyLevel: input.verifyLevel });
+          return {
+            ok: true,
+            step: "none",
+            results: [],
+            summary: "ok",
+            classifiedError: "Unknown",
+            suggestion: ""
+          } satisfies VerifyProjectResult;
+        }
+      }
     });
 
     expect(result.ok).toBe(true);
     expect(result.state.phase).toBe("DONE");
-    expect(result.state.verifyHistory.length).toBeGreaterThan(0);
-    expect(result.state.verifyHistory[result.state.verifyHistory.length - 1]?.ok).toBe(true);
+    expect(verifyInputs.length).toBeGreaterThan(0);
+    expect(verifyInputs[0]?.verifyLevel).toBe("full");
   });
 
-  test("verify fail with repair attempts and budget exhaustion ends in FAILED", async () => {
+  test("verify fail triggers repair and fails when repair budget exhausted", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
@@ -84,7 +98,11 @@ describe("agent runtime", () => {
       step: "build",
       results: [
         { name: "install", ok: true, code: 0, stdout: "ok", stderr: "", skipped: true },
-        { name: "build", ok: false, code: 1, stdout: "", stderr: "type error" }
+        { name: "install_retry", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+        { name: "build", ok: false, code: 1, stdout: "", stderr: "type error" },
+        { name: "build_retry", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+        { name: "cargo_check", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+        { name: "tauri_check", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true }
       ],
       summary: "verify failed at build",
       classifiedError: "TS",
@@ -109,7 +127,7 @@ describe("agent runtime", () => {
             ok: true,
             summary: "patched",
             audit: [],
-            patchPaths: [join(outDir, `p${repairCalls}.patch`)]
+            patchPaths: []
           };
         }
       },
@@ -119,6 +137,7 @@ describe("agent runtime", () => {
     expect(repairCalls).toBeGreaterThan(0);
     expect(result.ok).toBe(false);
     expect(result.state.phase).toBe("FAILED");
-    expect(result.state.budgets.usedPatches).toBeGreaterThan(result.state.budgets.maxPatches);
+    expect(result.state.budgets.usedRepairs).toBeGreaterThan(result.state.budgets.maxPatches);
+    expect(result.state.budgets.usedPatches).toBe(result.state.budgets.usedRepairs);
   });
 });

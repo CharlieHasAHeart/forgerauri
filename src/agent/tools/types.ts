@@ -19,6 +19,7 @@ export type ToolRunContext = {
     verify: boolean;
     repair: boolean;
     maxPatchesPerTurn: number;
+    verifyLevel: "basic" | "full";
   };
   memory: {
     specPath?: string;
