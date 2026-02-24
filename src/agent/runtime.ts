@@ -1,7 +1,8 @@
 import { join } from "node:path";
 import { AgentAuditCollector } from "./audit.js";
 import { proposeNextActions } from "./brain.js";
-import { createToolRegistry } from "./tools/registry.js";
+import { createToolRegistry, loadToolRegistryWithDocs } from "./tools/registry.js";
+import { buildToolDocPack } from "./tools/loader.js";
 import type { ToolRunContext, ToolSpec } from "./tools/types.js";
 import { getProviderFromEnv } from "../llm/index.js";
 import type { LlmProvider } from "../llm/provider.js";
@@ -65,7 +66,9 @@ export const runAgent = async (args: {
   const maxToolCallsPerTurn = args.maxToolCallsPerTurn ?? 4;
   const maxPatches = args.maxPatches ?? 8;
 
-  const registry = args.registry ?? createToolRegistry(args.registryDeps);
+  const discovered = args.registry ? null : await loadToolRegistryWithDocs(args.registryDeps);
+  const registry = args.registry ?? discovered?.registry ?? (await createToolRegistry(args.registryDeps));
+  const toolDocs = discovered?.docs ?? buildToolDocPack(registry);
 
   const state: AgentState = {
     phase: "BOOT",
@@ -120,6 +123,7 @@ export const runAgent = async (args: {
       goal: state.goal,
       provider,
       registry,
+      toolDocs,
       stateSummary: summarizeState(state),
       maxToolCallsPerTurn
     });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { LlmProvider } from "../llm/provider.js";
-import type { ToolSpec } from "./tools/types.js";
+import type { ToolDocPack, ToolSpec } from "./tools/types.js";
 
 type Proposed = {
   toolCalls: Array<{ name: string; input: unknown }>;
@@ -17,10 +17,25 @@ const extractJsonObject = (raw: string): string => {
   return source;
 };
 
-const toolCatalog = (registry: Record<string, ToolSpec>): string =>
-  Object.values(registry)
-    .map((tool) => `- ${tool.name}: ${tool.description}\n  inputSchema: ${JSON.stringify(tool.inputJsonSchema ?? { type: "object" })}`)
-    .join("\n");
+const renderToolDocs = (toolDocs: ToolDocPack[]): string =>
+  toolDocs
+    .map((tool) => {
+      const examples = tool.examples
+        .slice(0, 2)
+        .map((item) => `- ${item.title}: ${JSON.stringify(item.toolCall)}`)
+        .join("\n");
+      return [
+        `Tool: ${tool.name}`,
+        `Category: ${tool.category}`,
+        `Summary: ${tool.summary}`,
+        `InputSchema: ${JSON.stringify(tool.inputJsonSchema)}`,
+        tool.outputJsonSchema ? `OutputSchema: ${JSON.stringify(tool.outputJsonSchema)}` : "OutputSchema: <none>",
+        `Safety: ${JSON.stringify(tool.safety)}`,
+        examples ? `Examples:\n${examples}` : "Examples: <none>",
+        `Docs:\n${tool.docs || "<none>"}`
+      ].join("\n");
+    })
+    .join("\n\n---\n\n");
 
 const validateToolCalls = (
   value: Proposed,
@@ -51,6 +66,7 @@ export const proposeNextActions = async (args: {
   goal: string;
   provider: LlmProvider;
   registry: Record<string, ToolSpec>;
+  toolDocs: ToolDocPack[];
   stateSummary: unknown;
   maxToolCallsPerTurn: number;
 }): Promise<{ toolCalls: Array<{ name: string; input: unknown }>; reasoning?: string; raw: string }> => {
@@ -63,19 +79,18 @@ export const proposeNextActions = async (args: {
     {
       role: "system" as const,
       content:
-        "You are the Brain of a coding agent. You must call tools, never fabricate results. " +
-        "Hard guardrails: user-zone files can never be overwritten directly; only patch files are allowed. " +
-        "Prefer high-level tools first: tool_bootstrap_project then tool_verify_project. " +
-        "Only use tool_repair_once when verify fails and budget remains. " +
+        "You are the Brain of a coding agent. You must call tools and never fabricate results. " +
+        "Hard guardrails: user-zone files cannot be overwritten directly, only patch artifacts are allowed. " +
+        "Use tool documentation below to choose calls. Prefer high-level flow: bootstrap -> verify -> repair(if verify fails). " +
         "Return JSON only: {\"toolCalls\":[{\"name\":\"...\",\"input\":{}}],\"note\":\"optional\"}."
     },
     {
       role: "user" as const,
       content:
         `Goal:\n${args.goal}\n\n` +
-        `Available tools:\n${toolCatalog(args.registry)}\n\n` +
+        `Tool docs:\n${renderToolDocs(args.toolDocs)}\n\n` +
         `Current state summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
-        `Constraints:\n- maxToolCallsPerTurn=${args.maxToolCallsPerTurn}\n- Use tool_bootstrap_project for BOOT phase\n- Use tool_verify_project for VERIFY phase`
+        `Constraints:\n- maxToolCallsPerTurn=${args.maxToolCallsPerTurn}\n- BOOT should use tool_bootstrap_project\n- VERIFY should use tool_verify_project\n- REPAIR should use tool_repair_once then verify`
     }
   ];
 
