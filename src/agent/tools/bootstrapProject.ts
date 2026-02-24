@@ -11,8 +11,7 @@ import type { BootstrapProjectResult } from "../types.js";
 export const bootstrapProjectInputSchema = z.object({
   specPath: z.string().min(1),
   outDir: z.string().min(1),
-  apply: z.boolean().default(true),
-  llmEnrich: z.boolean().default(false)
+  apply: z.boolean().default(true)
 });
 
 const summarizePlan = (plan: Plan): Record<PlanActionType, number> => {
@@ -27,23 +26,14 @@ export const runBootstrapProject = async (args: {
   specPath: string;
   outDir: string;
   apply: boolean;
-  llmEnrich: boolean;
   provider: LlmProvider;
 }): Promise<BootstrapProjectResult> => {
-  let ir = await loadSpec(args.specPath);
-  let usedLLM = false;
-
-  if (args.llmEnrich) {
-    try {
-      const rawText = await readFile(args.specPath, "utf8");
-      const rawJson = JSON.parse(rawText) as unknown;
-      const enriched = await enrichWireSpecWithLLM({ wire: rawJson, provider: args.provider });
-      ir = parseSpecFromRaw(enriched.wireEnriched);
-      usedLLM = enriched.used;
-    } catch {
-      usedLLM = false;
-    }
-  }
+  await loadSpec(args.specPath);
+  const rawText = await readFile(args.specPath, "utf8");
+  const rawJson = JSON.parse(rawText) as unknown;
+  const enriched = await enrichWireSpecWithLLM({ wire: rawJson, provider: args.provider });
+  const ir = parseSpecFromRaw(enriched.wireEnriched);
+  const usedLLM = enriched.used;
 
   const plan = await generateScaffold(ir, args.outDir);
   const planCounts = summarizePlan(plan);

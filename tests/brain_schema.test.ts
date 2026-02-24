@@ -7,7 +7,7 @@ describe("brain schema validation", () => {
   test("retries once when tool name is invalid", async () => {
     const provider = new MockProvider([
       JSON.stringify({ toolCalls: [{ name: "tool_not_exists", input: {} }] }),
-      JSON.stringify({ toolCalls: [{ name: "tool_bootstrap_project", input: { specPath: "/tmp/spec.json", outDir: "/tmp/out", apply: true, llmEnrich: false } }] })
+      JSON.stringify({ toolCalls: [{ name: "tool_bootstrap_project", input: { specPath: "/tmp/spec.json", outDir: "/tmp/out", apply: true } }] })
     ]);
 
     const out = await proposeNextActions({

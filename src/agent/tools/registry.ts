@@ -43,7 +43,7 @@ const listFiles = async (root: string): Promise<string[]> => {
 
 const tool_bootstrap_project: ToolSpec<z.infer<typeof bootstrapProjectInputSchema>> = {
   name: "tool_bootstrap_project",
-  description: "High-level bootstrap: load spec, optional llm enrich, build plan, apply plan.",
+  description: "High-level bootstrap: load spec, mandatory llm enrich, build plan, apply plan.",
   inputSchema: bootstrapProjectInputSchema,
   inputJsonSchema: toJsonSchema(bootstrapProjectInputSchema),
   run: async (input, ctx) => {
@@ -52,7 +52,6 @@ const tool_bootstrap_project: ToolSpec<z.infer<typeof bootstrapProjectInputSchem
         specPath: input.specPath,
         outDir: input.outDir,
         apply: input.apply,
-        llmEnrich: input.llmEnrich,
         provider: ctx.provider
       });
 
@@ -265,7 +264,6 @@ export const createToolRegistry = (deps?: {
           specPath: input.specPath,
           outDir: input.outDir,
           apply: input.apply,
-          llmEnrich: input.llmEnrich,
           provider: ctx.provider
         });
         ctx.memory.specPath = input.specPath;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { runAgent } from "../src/agent/runtime.js";
-import type { VerifyProjectResult } from "../src/agent/types.js";
+import type { BootstrapProjectResult, VerifyProjectResult } from "../src/agent/types.js";
 import { MockProvider } from "../src/llm/providers/mock.js";
 
 const writeSpec = async (root: string): Promise<string> => {
@@ -22,6 +22,18 @@ const writeSpec = async (root: string): Promise<string> => {
 
 const emptyCalls = JSON.stringify({ toolCalls: [] });
 
+const mockBootstrap = async (input: {
+  specPath: string;
+  outDir: string;
+  apply: boolean;
+}): Promise<BootstrapProjectResult> => ({
+  ok: true,
+  appDir: join(input.outDir, "agent-demo"),
+  usedLLM: true,
+  planSummary: { create: 1, overwrite: 0, skip: 0, patch: 0 },
+  applySummary: { create: 1, overwrite: 0, skip: 0, patch: 0, patchPaths: [], applied: input.apply }
+});
+
 describe("agent runtime", () => {
   test("plan-only mode ends in DONE", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
@@ -38,7 +50,10 @@ describe("agent runtime", () => {
       verify: false,
       repair: false,
       provider,
-      maxTurns: 2
+      maxTurns: 2,
+      registryDeps: {
+        runBootstrapProjectImpl: mockBootstrap
+      }
     });
 
     expect(result.ok).toBe(true);
@@ -64,6 +79,7 @@ describe("agent runtime", () => {
       provider,
       maxTurns: 4,
       registryDeps: {
+        runBootstrapProjectImpl: mockBootstrap,
         runVerifyProjectImpl: async (input) => {
           verifyInputs.push({ projectRoot: input.projectRoot, verifyLevel: input.verifyLevel });
           return {
@@ -120,6 +136,7 @@ describe("agent runtime", () => {
       maxTurns: 6,
       maxPatches: 1,
       registryDeps: {
+        runBootstrapProjectImpl: mockBootstrap,
         runVerifyProjectImpl: async () => failVerify,
         repairOnceImpl: async () => {
           repairCalls += 1;

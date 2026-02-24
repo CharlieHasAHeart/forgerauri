@@ -50,7 +50,6 @@ export const runAgent = async (args: {
   apply: boolean;
   verify: boolean;
   repair: boolean;
-  llmEnrichSpec?: boolean;
   verifyLevel?: "basic" | "full";
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
@@ -77,7 +76,6 @@ export const runAgent = async (args: {
       apply: args.apply,
       verify: args.verify,
       repair: args.repair,
-      llmEnrich: args.llmEnrichSpec ?? false,
       verifyLevel: args.verifyLevel ?? "basic"
     },
     usedLLM: false,
@@ -135,8 +133,7 @@ export const runAgent = async (args: {
           input: {
             specPath: state.specPath,
             outDir: state.outDir,
-            apply: state.flags.apply,
-            llmEnrich: state.flags.llmEnrich
+            apply: state.flags.apply
           }
         }
       ];

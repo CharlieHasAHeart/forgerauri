@@ -15,8 +15,8 @@
  * - `export DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1`
  * - `export DASHSCOPE_MODEL=qwen3-max-2026-01-23`
  *
- * LLM enrich:
- * - `DASHSCOPE_API_KEY=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply --llm-enrich-spec`
+ * LLM enrich is mandatory in current pipeline:
+ * - `DASHSCOPE_API_KEY=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
  *
  * After scaffold generation:
  * - `cd <outDir>/<app-slug>`
@@ -45,7 +45,6 @@ type CliOptions = {
   plan: boolean;
   apply: boolean;
   applySpecified: boolean;
-  llmEnrichSpec: boolean;
   verify: boolean;
   verifySpecified: boolean;
   verifyLevel: "basic" | "full";
@@ -71,7 +70,6 @@ const parseArgs = (argv: string[]): CliOptions => {
   let plan = false;
   let apply = false;
   let applySpecified = false;
-  let llmEnrichSpec = false;
   let verify = false;
   let verifySpecified = false;
   let verifyLevel: "basic" | "full" = "basic";
@@ -131,10 +129,6 @@ const parseArgs = (argv: string[]): CliOptions => {
       applySpecified = true;
       continue;
     }
-    if (arg === "--llm-enrich-spec") {
-      llmEnrichSpec = true;
-      continue;
-    }
     if (arg === "--verify") {
       verify = true;
       verifySpecified = true;
@@ -159,7 +153,6 @@ const parseArgs = (argv: string[]): CliOptions => {
     plan,
     apply,
     applySpecified,
-    llmEnrichSpec,
     verify,
     verifySpecified,
     verifyLevel,
@@ -202,7 +195,7 @@ const printPlan = (plan: Plan): void => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--llm-enrich-spec] [--verify] [--verify-level basic|full] [--repair] [--max-turns N] [--max-patches N]");
+  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--verify-level basic|full] [--repair] [--max-turns N] [--max-patches N]");
   console.error("- Optional basic scaffold: pnpm dev -- <spec.json> --out <dir> --plan|--apply");
 };
 
@@ -225,7 +218,6 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     apply: finalApply,
     verify: finalVerify,
     repair: finalRepair,
-    llmEnrichSpec: options.llmEnrichSpec,
     verifyLevel: options.verifyLevel,
     maxTurns: options.maxTurns,
     maxPatches: options.maxPatches
@@ -251,27 +243,13 @@ const runGenerate = async (options: CliOptions): Promise<void> => {
     return;
   }
 
-  let ir;
-
-  if (options.llmEnrichSpec) {
-    const rawText = await readFile(options.specPath, "utf8");
-    const rawJson = JSON.parse(rawText) as unknown;
-
-    try {
-      const provider = getProviderFromEnv();
-      const enriched = await enrichWireSpecWithLLM({ wire: rawJson, provider });
-      ir = parseSpecFromRaw(enriched.wireEnriched);
-      console.log(`Spec enrich: used=${enriched.used}`);
-    } catch (error) {
-      ir = parseSpecFromRaw(rawJson);
-      console.log("Spec enrich: used=false (fallback to deterministic parse)");
-      if (error instanceof Error) {
-        console.log(`Spec enrich note: ${error.message}`);
-      }
-    }
-  } else {
-    ir = await loadSpec(options.specPath);
-  }
+  await loadSpec(options.specPath);
+  const rawText = await readFile(options.specPath, "utf8");
+  const rawJson = JSON.parse(rawText) as unknown;
+  const provider = getProviderFromEnv();
+  const enriched = await enrichWireSpecWithLLM({ wire: rawJson, provider });
+  const ir = parseSpecFromRaw(enriched.wireEnriched);
+  console.log(`Spec enrich: used=${enriched.used}`);
 
   console.log("Validation summary: OK");
 
