@@ -130,7 +130,7 @@ export const runAgent = async (args: {
 
     let toolCalls = [...proposed.toolCalls];
 
-    if (state.phase === "BOOT" && !toolCalls.some((call) => call.name === "tool_bootstrap_project")) {
+    if (state.phase === "BOOT") {
       toolCalls = [
         {
           name: "tool_bootstrap_project",
@@ -141,11 +141,11 @@ export const runAgent = async (args: {
           }
         }
       ];
-    } else if (state.phase === "VERIFY" && state.appDir && !toolCalls.some((call) => call.name === "tool_verify_project")) {
+    } else if (state.phase === "VERIFY" && state.appDir) {
       toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir, verifyLevel: state.flags.verifyLevel } }];
     } else if (state.phase === "REPAIR") {
       const repairCmd = inferRepairCommand(state);
-      if (repairCmd && !toolCalls.some((call) => call.name === "tool_repair_once")) {
+      if (repairCmd) {
         toolCalls = [
           {
             name: "tool_repair_once",
