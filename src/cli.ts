@@ -4,8 +4,6 @@
  * - `pnpm dev -- --spec ./spec.json`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan`
  * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply`
- * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan --use-langgraph`
- * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply --verify --repair --use-langgraph`
  * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
  * - `pnpm dev --implement --project ./generated/agnix --spec /mnt/data/agent-sh__agnix.json --target ui --apply --verify`
  * - `pnpm dev --implement --project ./generated/agnix --spec /mnt/data/agent-sh__agnix.json --target commands:lint_config --apply --verify --repair`
@@ -45,7 +43,6 @@ import { getProviderFromEnv } from "./llm/index.js";
 import { repairOnce } from "./repair/repairLoop.js";
 import { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
 import { loadSpec, parseSpecFromRaw } from "./spec/loadSpec.js";
-import { runGraphWithOptions } from "./workflow/runGraph.js";
 
 type CliOptions = {
   specPath?: string;
@@ -57,7 +54,6 @@ type CliOptions = {
   apply: boolean;
   llmEnrichSpec: boolean;
   verify: boolean;
-  useLanggraph: boolean;
   repair: boolean;
   target?: string;
   maxPatches: number;
@@ -84,7 +80,6 @@ const parseArgs = (argv: string[]): CliOptions => {
   let apply = false;
   let llmEnrichSpec = false;
   let verify = false;
-  let useLanggraph = false;
   let repair = false;
   let target: string | undefined;
   let maxPatches = 6;
@@ -165,10 +160,6 @@ const parseArgs = (argv: string[]): CliOptions => {
       verify = true;
       continue;
     }
-    if (arg === "--use-langgraph") {
-      useLanggraph = true;
-      continue;
-    }
     if (arg === "--repair") {
       repair = true;
       continue;
@@ -189,7 +180,6 @@ const parseArgs = (argv: string[]): CliOptions => {
     apply,
     llmEnrichSpec,
     verify,
-    useLanggraph,
     repair,
     target,
     maxPatches,
@@ -235,7 +225,6 @@ const usage = (): void => {
   console.error("- pnpm dev -- <spec.json> --out <dir> --plan");
   console.error("- pnpm dev -- <spec.json> --out <dir> --apply");
   console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> --apply --verify --repair");
-  console.error("- pnpm dev -- <spec.json> --out <dir> --apply --verify --repair --use-langgraph");
   console.error("- pnpm dev --repair --project <path> --cmd <cmd> --args \"a,b,c\" --apply");
   console.error("- pnpm dev --implement --project <path> --spec <spec.json> --target <ui|business|commands:name> --apply");
 };
@@ -408,20 +397,6 @@ const main = async (): Promise<void> => {
 
     if (options.implement) {
       await runImplement(options);
-      return;
-    }
-
-    if (options.useLanggraph) {
-      const result = await runGraphWithOptions({
-        specPath: options.specPath,
-        outDir: options.outDir,
-        plan: options.plan,
-        apply: options.apply,
-        llmEnrichSpec: options.llmEnrichSpec,
-        verify: options.verify,
-        repair: options.repair
-      });
-      process.exitCode = result.code;
       return;
     }
 
