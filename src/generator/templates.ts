@@ -1,5 +1,8 @@
 import type { SpecIR } from "../spec/schema.js";
 
+const ICON_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+i3ioAAAAASUVORK5CYII=";
+
 export const toAppSlug = (appName: string): string => {
   const slug = appName
     .toLowerCase()
@@ -350,6 +353,7 @@ export const templateFiles = (ir: SpecIR): Record<string, string> => {
     "src-tauri/Cargo.toml": templateCargoToml(appName),
     "src-tauri/build.rs": templateBuildRs(),
     "src-tauri/tauri.conf.json": templateTauriConf(appName),
+    "src-tauri/icons/icon.png": `__BASE64__:${ICON_PNG_BASE64}`,
     "src-tauri/capabilities/default.json": templateCapabilityDefault(),
     "src-tauri/src/lib.rs": templateRustLib(),
     "src-tauri/src/main.rs": templateRustEntry(),

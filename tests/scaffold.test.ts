@@ -27,6 +27,7 @@ describe("scaffold plan", () => {
 
     expect(paths).toContain(join(appRoot, "package.json"));
     expect(paths).toContain(join(appRoot, "src-tauri/src/main.rs"));
+    expect(paths).toContain(join(appRoot, "src-tauri/icons/icon.png"));
     expect(paths).toContain(join(appRoot, "src/App.svelte"));
   });
 

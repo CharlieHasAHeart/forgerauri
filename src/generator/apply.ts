@@ -3,6 +3,8 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { classifyPath } from "./zones.js";
 import type { Plan } from "./types.js";
 
+const BASE64_PREFIX = "__BASE64__:";
+
 const ensureInside = (root: string, target: string): void => {
   const resolvedRoot = resolve(root);
   const resolvedTarget = resolve(target);
@@ -73,7 +75,12 @@ export const applyPlan = async (plan: Plan, opts: { apply: boolean }): Promise<{
         throw new Error(`Missing file content for ${action.path}`);
       }
       await mkdir(dirname(action.path), { recursive: true });
-      await writeFile(action.path, action.content, "utf8");
+      if (action.content.startsWith(BASE64_PREFIX)) {
+        const base64 = action.content.slice(BASE64_PREFIX.length).replace(/\s+/g, "");
+        await writeFile(action.path, Buffer.from(base64, "base64"));
+      } else {
+        await writeFile(action.path, action.content, "utf8");
+      }
     }
   }
 
