@@ -31,8 +31,7 @@ describe("tool output schema validation", () => {
           apply: true,
           verify: true,
           repair: true,
-          maxPatchesPerTurn: 8,
-          verifyLevel: "basic"
+          maxPatchesPerTurn: 8
         },
         memory: {
           patchPaths: [],

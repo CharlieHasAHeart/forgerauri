@@ -38,7 +38,7 @@ describe("tool_design_implementation", () => {
       {
         provider,
         runCmdImpl: async () => ({ ok: true, code: 0, stdout: "", stderr: "" }),
-        flags: { apply: true, verify: true, repair: true, maxPatchesPerTurn: 8, verifyLevel: "basic" },
+        flags: { apply: true, verify: true, repair: true, maxPatchesPerTurn: 8 },
         memory: { patchPaths: [], touchedPaths: [] }
       }
     );
