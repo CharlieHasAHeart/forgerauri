@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
-import { MockProvider } from "../src/llm/providers/mock.js";
+import { MockProvider } from "./helpers/mockProvider.js";
 
 describe("llm provider completeJSON", () => {
   test("retries on invalid json then succeeds", async () => {

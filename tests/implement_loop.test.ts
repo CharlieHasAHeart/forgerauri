@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { implementOnce } from "../src/implement/implementLoop.js";
-import { MockProvider } from "../src/llm/providers/mock.js";
+import { MockProvider } from "./helpers/mockProvider.js";
 
 const writeSpec = async (root: string): Promise<string> => {
   const specPath = join(root, "spec.json");

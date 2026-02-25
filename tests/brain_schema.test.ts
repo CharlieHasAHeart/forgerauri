@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { proposeNextActions } from "../src/agent/brain.js";
 import { createToolRegistry } from "../src/agent/tools/registry.js";
 import { buildToolDocPack } from "../src/agent/tools/loader.js";
-import { MockProvider } from "../src/llm/providers/mock.js";
+import { MockProvider } from "./helpers/mockProvider.js";
 
 describe("brain schema validation", () => {
   test("retries once when tool name is invalid", async () => {

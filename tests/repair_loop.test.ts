@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { MockProvider } from "../src/llm/providers/mock.js";
+import { MockProvider } from "./helpers/mockProvider.js";
 import { repairOnce } from "../src/repair/repairLoop.js";
 
 describe("repair loop", () => {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { runAgent } from "../src/agent/runtime.js";
 import type { BootstrapProjectResult, VerifyProjectResult } from "../src/agent/types.js";
-import { MockProvider } from "../src/llm/providers/mock.js";
+import { MockProvider } from "./helpers/mockProvider.js";
 
 const writeSpec = async (root: string): Promise<string> => {
   const specPath = join(root, "spec.json");

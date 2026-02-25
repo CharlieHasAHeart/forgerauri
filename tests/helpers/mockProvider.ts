@@ -1,4 +1,4 @@
-import { BaseLlmProvider, type LlmCallOptions, type LlmMessage } from "../provider.js";
+import { BaseLlmProvider, type LlmCallOptions, type LlmMessage } from "../../src/llm/provider.js";
 
 export class MockProvider extends BaseLlmProvider {
   name = "mock";

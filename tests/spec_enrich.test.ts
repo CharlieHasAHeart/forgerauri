@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { MockProvider } from "../src/llm/providers/mock.js";
+import { MockProvider } from "./helpers/mockProvider.js";
 import { enrichWireSpecWithLLM } from "../src/spec/enrichWithLLM.js";
 import { parseSpecFromRaw } from "../src/spec/loadSpec.js";
 
