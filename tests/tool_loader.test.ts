@@ -18,6 +18,7 @@ describe("tool discovery", () => {
       "tool_materialize_implementation",
       "tool_materialize_ux",
       "tool_read_files",
+      "tool_repair_known_issues",
       "tool_repair_once",
       "tool_run_cmd",
       "tool_validate_design",
@@ -30,7 +31,7 @@ describe("tool discovery", () => {
     });
 
     const docs = buildToolDocPack(registry);
-    expect(docs).toHaveLength(15);
+    expect(docs).toHaveLength(16);
     expect(docs[0]?.name).toBe("tool_bootstrap_project");
   });
 });

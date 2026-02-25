@@ -74,6 +74,8 @@ export type AgentState = {
     errorsCount: number;
     summary: string;
   };
+  lastDeterministicFixes?: string[];
+  repairKnownChecked?: boolean;
   codegenSummary?: {
     generatedFilesCount: number;
     wrote: number;

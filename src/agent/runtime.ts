@@ -23,6 +23,8 @@ const summarizeState = (state: AgentState): unknown => ({
   implPath: state.implPath,
   deliveryPath: state.deliveryPath,
   designValidation: state.designValidation,
+  lastDeterministicFixes: state.lastDeterministicFixes,
+  repairKnownChecked: state.repairKnownChecked,
   codegenSummary: state.codegenSummary,
   counts: {
     contractCommands: state.contract?.commands.length ?? 0,
@@ -111,6 +113,8 @@ export const runAgent = async (args: {
     },
     patchPaths: [],
     humanReviews: [],
+    lastDeterministicFixes: [],
+    repairKnownChecked: false,
     touchedFiles: [],
     toolCalls: [],
     toolResults: []
@@ -274,22 +278,36 @@ export const runAgent = async (args: {
       } else if (state.phase === "VERIFY" && state.appDir) {
         toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir } }];
       } else if (state.phase === "REPAIR") {
-        const repairCmd = inferRepairCommand(state);
-        if (repairCmd) {
+        if (!state.repairKnownChecked && state.appDir) {
           toolCalls = [
             {
-              name: "tool_repair_once",
+              name: "tool_repair_known_issues",
               input: {
-                projectRoot: state.appDir,
-                cmd: repairCmd.cmd,
-                args: repairCmd.args
+                projectRoot: state.appDir
               }
-            },
-            {
-              name: "tool_verify_project",
-              input: { projectRoot: state.appDir }
             }
           ];
+        } else {
+          const repairCmd = inferRepairCommand(state);
+          if (repairCmd) {
+            toolCalls = [
+              {
+                name: "tool_repair_once",
+                input: {
+                  projectRoot: state.appDir,
+                  cmd: repairCmd.cmd,
+                  args: repairCmd.args
+                }
+              }
+            ];
+          } else {
+            state.phase = "FAILED";
+            state.lastError = {
+              kind: "Config",
+              message: "Unable to infer repair command from verify history"
+            };
+            toolCalls = [];
+          }
         }
       }
     } catch (error) {
@@ -468,13 +486,37 @@ export const runAgent = async (args: {
             message: verifyData.summary,
             command: inferRepairCommand(state) ?? undefined
           };
+          state.repairKnownChecked = false;
+          state.lastDeterministicFixes = [];
           state.phase = state.flags.repair ? "REPAIR" : "FAILED";
+        }
+      }
+
+      if (call.name === "tool_repair_known_issues") {
+        if (result.ok) {
+          const data = result.data as { changed: boolean; fixes: Array<{ id: string }> };
+          state.lastDeterministicFixes = data.fixes.map((fix) => fix.id);
+          if (data.changed) {
+            state.repairKnownChecked = false;
+            state.phase = "VERIFY";
+          } else {
+            state.repairKnownChecked = true;
+            state.phase = "REPAIR";
+          }
+        } else {
+          state.lastError = {
+            kind: state.lastError?.kind ?? "Unknown",
+            message: result.error?.message ?? "deterministic known-issues repair failed"
+          };
+          state.repairKnownChecked = true;
+          state.phase = "REPAIR";
         }
       }
 
       if (call.name === "tool_repair_once") {
         state.budgets.usedRepairs += 1;
         state.budgets.usedPatches = state.budgets.usedRepairs;
+        state.repairKnownChecked = false;
         if (!result.ok) {
           state.lastError = {
             kind: state.lastError?.kind ?? "Unknown",
@@ -486,7 +528,7 @@ export const runAgent = async (args: {
         }
       }
 
-      if (!result.ok && call.name !== "tool_verify_project" && call.name !== "tool_repair_once") {
+      if (!result.ok && call.name !== "tool_verify_project" && call.name !== "tool_repair_once" && call.name !== "tool_repair_known_issues") {
         state.lastError = {
           kind: "Unknown",
           message: result.error?.message ?? "tool failed"

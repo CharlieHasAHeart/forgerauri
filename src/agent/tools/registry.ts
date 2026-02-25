@@ -10,6 +10,7 @@ import { runMaterializeContract } from "./materialize_contract/index.js";
 import { runMaterializeDelivery } from "./materialize_delivery/index.js";
 import { runMaterializeImplementation } from "./materialize_implementation/index.js";
 import { runMaterializeUx } from "./materialize_ux/index.js";
+import { runRepairKnownIssues } from "./repair_known_issues/index.js";
 import { runValidateDesign } from "./validate_design/index.js";
 import { runVerifyProject } from "./verifyProject.js";
 import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
@@ -28,6 +29,7 @@ export type ToolRegistryDeps = {
   runValidateDesignImpl?: typeof runValidateDesign;
   runCodegenFromDesignImpl?: typeof runCodegenFromDesign;
   runVerifyProjectImpl?: typeof runVerifyProject;
+  runRepairKnownIssuesImpl?: typeof runRepairKnownIssues;
   repairOnceImpl?: typeof repairOnce;
   toolsBaseDir?: string;
 };
@@ -357,6 +359,29 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
         return {
           ok: false,
           error: { code: "REPAIR_FAILED", message: error instanceof Error ? error.message : "repair failed" }
+        };
+      }
+    });
+  }
+
+  if (deps?.runRepairKnownIssuesImpl && loaded.tool_repair_known_issues) {
+    loaded.tool_repair_known_issues = withRunOverride(loaded.tool_repair_known_issues, async (input) => {
+      try {
+        const result = await deps.runRepairKnownIssuesImpl!({
+          projectRoot: input.projectRoot
+        });
+        return {
+          ok: result.ok,
+          data: result,
+          meta: { touchedPaths: result.fixes.flatMap((fix) => fix.paths) }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "REPAIR_KNOWN_ISSUES_FAILED",
+            message: error instanceof Error ? error.message : "known issues repair failed"
+          }
         };
       }
     });

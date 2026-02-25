@@ -292,6 +292,7 @@ describe("agent runtime", () => {
 
     const provider = new MockProvider(new Array(20).fill(emptyCalls));
 
+    let knownRepairCalls = 0;
     let repairCalls = 0;
 
     const failVerify: VerifyProjectResult = {
@@ -351,6 +352,15 @@ describe("agent runtime", () => {
           summary: { wrote: 0, skipped: 1 }
         }),
         runVerifyProjectImpl: async () => failVerify,
+        runRepairKnownIssuesImpl: async () => {
+          knownRepairCalls += 1;
+          return {
+            ok: true,
+            changed: false,
+            fixes: [],
+            summary: "No known deterministic issues found"
+          };
+        },
         repairOnceImpl: async () => {
           repairCalls += 1;
           return {
@@ -364,6 +374,7 @@ describe("agent runtime", () => {
       runCmdImpl: async () => ({ ok: false, code: 1, stdout: "", stderr: "fail" })
     });
 
+    expect(knownRepairCalls).toBeGreaterThan(0);
     expect(repairCalls).toBeGreaterThan(0);
     expect(result.ok).toBe(false);
     expect(result.state.phase).toBe("FAILED");
@@ -432,6 +443,12 @@ describe("agent runtime", () => {
           classifiedError: "TS",
           suggestion: "fix ts"
         }),
+        runRepairKnownIssuesImpl: async () => ({
+          ok: true,
+          changed: false,
+          fixes: [],
+          summary: "No known deterministic issues found"
+        }),
         repairOnceImpl: async () => ({
           ok: true,
           summary: "patched",
@@ -446,5 +463,104 @@ describe("agent runtime", () => {
     expect(result.state.humanReviews.length).toBeGreaterThan(0);
     expect(result.state.humanReviews[0]?.approved).toBe(false);
     expect(result.summary).toContain("Human review rejected");
+  });
+
+  test("repair phase stops at known issues when deterministic fix changes files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
+    const specPath = await writeSpec(root);
+    const outDir = join(root, "generated");
+    const provider = new MockProvider(new Array(20).fill(emptyCalls));
+
+    let knownCalls = 0;
+    let repairOnceCalls = 0;
+    let verifyCalls = 0;
+
+    const verifyFailThenPass: VerifyProjectResult[] = [
+      {
+        ok: false,
+        step: "tauri_build",
+        results: [],
+        summary: "verify failed at tauri build",
+        classifiedError: "Tauri",
+        suggestion: "fix config"
+      },
+      {
+        ok: true,
+        step: "none",
+        results: [],
+        summary: "ok",
+        classifiedError: "Unknown",
+        suggestion: ""
+      }
+    ];
+
+    const result = await runAgent({
+      goal: "known issues before llm repair",
+      specPath,
+      outDir,
+      apply: true,
+      verify: true,
+      repair: true,
+      provider,
+      maxTurns: 20,
+      registryDeps: {
+        runBootstrapProjectImpl: mockBootstrap,
+        runDesignContractImpl: async () => ({ contract: mockContract, attempts: 1, raw: "{}" }),
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => ({
+          appDir: join(materializeOutDir, "agent-demo"),
+          contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
+          summary: { wrote: 0, skipped: 3 }
+        }),
+        runDesignUxImpl: async () => ({ ux: mockUx, attempts: 1, raw: "{}" }),
+        runMaterializeUxImpl: async ({ projectRoot }) => ({ uxPath: join(projectRoot, "src/lib/design/ux.json"), summary: { wrote: 0, skipped: 2 } }),
+        runDesignImplementationImpl: async () => ({ impl: mockImpl, attempts: 1, raw: "{}" }),
+        runMaterializeImplementationImpl: async ({ projectRoot }) => ({
+          implPath: join(projectRoot, "src/lib/design/implementation.json"),
+          summary: { wrote: 0, skipped: 2 }
+        }),
+        runDesignDeliveryImpl: async () => ({ delivery: mockDelivery, attempts: 1, raw: "{}" }),
+        runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
+          deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
+          summary: { wrote: 0, skipped: 4 }
+        }),
+        runValidateDesignImpl: async () => ({
+          ok: true,
+          errors: [],
+          summary: "Design validation passed"
+        }),
+        runCodegenFromDesignImpl: async () => ({
+          ok: true,
+          generated: ["src/lib/api/generated/contract.ts"],
+          summary: { wrote: 0, skipped: 1 }
+        }),
+        runVerifyProjectImpl: async () => {
+          const next = verifyFailThenPass[Math.min(verifyCalls, verifyFailThenPass.length - 1)]!;
+          verifyCalls += 1;
+          return next;
+        },
+        runRepairKnownIssuesImpl: async () => {
+          knownCalls += 1;
+          return {
+            ok: true,
+            changed: true,
+            fixes: [{ id: "ensure_icon_png", message: "added icon", paths: [join(outDir, "agent-demo/src-tauri/icons/icon.png")] }],
+            summary: "Applied 1 deterministic known-issue fix(es)"
+          };
+        },
+        repairOnceImpl: async () => {
+          repairOnceCalls += 1;
+          return {
+            ok: true,
+            summary: "patched",
+            audit: [],
+            patchPaths: []
+          };
+        }
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(knownCalls).toBeGreaterThan(0);
+    expect(repairOnceCalls).toBe(0);
   });
 });
