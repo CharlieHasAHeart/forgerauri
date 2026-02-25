@@ -15,6 +15,10 @@ export const assertPathInside = (root: string, target: string): void => {
   }
 };
 
+export const assertCwdInside = (projectRoot: string, cwd: string): void => {
+  assertPathInside(projectRoot, cwd);
+};
+
 export const assertPatchBudget = (count: number, maxPatches: number): void => {
   if (count > maxPatches) {
     throw new Error(`Patch budget exceeded: ${count} > ${maxPatches}`);

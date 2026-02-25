@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import type { CmdResult } from "../../runner/runCmd.js";
+import { assertCommandAllowed, assertCwdInside } from "../../runtime/policy.js";
 import type { AgentCmdRunner, ErrorKind, VerifyProjectResult, VerifyStepResult } from "../types.js";
 
 export const verifyProjectInputSchema = z.object({
@@ -62,6 +63,12 @@ export const runVerifyProject = async (args: {
   projectRoot: string;
   runCmdImpl: AgentCmdRunner;
 }): Promise<VerifyProjectResult> => {
+  const safeRun = async (cmd: string, argv: string[], cwd: string): Promise<CmdResult> => {
+    assertCommandAllowed(cmd);
+    assertCwdInside(args.projectRoot, cwd);
+    return args.runCmdImpl(cmd, argv, cwd);
+  };
+
   const steps: VerifyStepResult[] = [];
   const done: VerifyStepResult["name"][] = [];
 
@@ -86,7 +93,7 @@ export const runVerifyProject = async (args: {
   const nodeModulesPath = join(args.projectRoot, "node_modules");
 
   if (!existsSync(nodeModulesPath)) {
-    const installResult = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "install"], args.projectRoot);
+    const installResult = await safeRun("pnpm", ["-C", args.projectRoot, "install"], args.projectRoot);
     const installStep = toStep("install", installResult);
     push(installStep);
     if (!installStep.ok) return fail("install", installStep.stderr, "verify failed at install");
@@ -96,19 +103,19 @@ export const runVerifyProject = async (args: {
 
   push(toStep("install_retry", okSkipped(), true));
 
-  const buildResult = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "build"], args.projectRoot);
+  const buildResult = await safeRun("pnpm", ["-C", args.projectRoot, "build"], args.projectRoot);
   const buildStep = toStep("build", buildResult);
   push(buildStep);
 
   if (!buildStep.ok && isDepsBuildFailure(buildStep.stderr)) {
-    const installRetry = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "install"], args.projectRoot);
+    const installRetry = await safeRun("pnpm", ["-C", args.projectRoot, "install"], args.projectRoot);
     steps[done.indexOf("install_retry")] = toStep("install_retry", installRetry);
 
     if (!installRetry.ok) {
       return fail("install_retry", installRetry.stderr, "verify failed at install retry");
     }
 
-    const buildRetry = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "build"], args.projectRoot);
+    const buildRetry = await safeRun("pnpm", ["-C", args.projectRoot, "build"], args.projectRoot);
     const buildRetryStep = toStep("build_retry", buildRetry);
     push(buildRetryStep);
     if (!buildRetryStep.ok) {
@@ -121,17 +128,17 @@ export const runVerifyProject = async (args: {
 
   const tauriRoot = join(args.projectRoot, "src-tauri");
   if (existsSync(tauriRoot)) {
-    const cargoResult = await args.runCmdImpl("cargo", ["check"], tauriRoot);
+    const cargoResult = await safeRun("cargo", ["check"], tauriRoot);
     const cargoStep = toStep("cargo_check", cargoResult);
     push(cargoStep);
     if (!cargoStep.ok) return fail("cargo_check", cargoStep.stderr, "verify failed at cargo_check");
 
-    const tauriCheck = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "tauri", "--help"], args.projectRoot);
+    const tauriCheck = await safeRun("pnpm", ["-C", args.projectRoot, "tauri", "--help"], args.projectRoot);
     const tauriCheckStep = toStep("tauri_check", tauriCheck);
     push(tauriCheckStep);
     if (!tauriCheckStep.ok) return fail("tauri_check", tauriCheckStep.stderr, "verify failed at tauri_check");
 
-    const tauriBuild = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "tauri", "build"], args.projectRoot);
+    const tauriBuild = await safeRun("pnpm", ["-C", args.projectRoot, "tauri", "build"], args.projectRoot);
     const tauriBuildStep = toStep("tauri_build", tauriBuild);
     push(tauriBuildStep);
     if (!tauriBuildStep.ok) return fail("tauri_build", tauriBuildStep.stderr, "verify failed at tauri_build");

@@ -7,7 +7,7 @@ import { classifyPath } from "../generator/zones.js";
 import type { LlmProvider } from "../llm/provider.js";
 import { runCmd, type CmdResult } from "../runner/runCmd.js";
 import { AuditCollector } from "../runtime/audit.js";
-import { assertCommandAllowed, assertPatchBudget, assertPathInside } from "../runtime/policy.js";
+import { assertCommandAllowed, assertCwdInside, assertPatchBudget, assertPathInside } from "../runtime/policy.js";
 import type { RuntimeResult } from "../runtime/types.js";
 import { proposeRepairsWithLLM } from "./proposeRepairsWithLLM.js";
 
@@ -98,10 +98,13 @@ export const repairOnce = async (args: {
   const audit = new AuditCollector();
   const run = args.runImpl ?? runCmd;
   const maxPatches = args.budget?.maxPatches ?? 5;
+  const safeRun = (cmd: string, argv: string[], cwd: string): Promise<CmdResult> => {
+    assertCommandAllowed(cmd);
+    assertCwdInside(args.projectRoot, cwd);
+    return run(cmd, argv, cwd);
+  };
 
-  assertCommandAllowed(args.cmd);
-
-  const first = await run(args.cmd, args.args, args.projectRoot);
+  const first = await safeRun(args.cmd, args.args, args.projectRoot);
   audit.record("run", { phase: "initial", result: first });
 
   if (first.ok) {
@@ -136,7 +139,7 @@ export const repairOnce = async (args: {
   const applyRes = await applyPlan(plan, { apply: args.apply ?? true });
   audit.record("apply", applyRes);
 
-  const second = await run(args.cmd, args.args, args.projectRoot);
+  const second = await safeRun(args.cmd, args.args, args.projectRoot);
   audit.record("run", { phase: "verify", result: second });
 
   await audit.flush(args.projectRoot);

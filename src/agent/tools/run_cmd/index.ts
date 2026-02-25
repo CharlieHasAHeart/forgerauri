@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { assertCommandAllowed } from "../../../runtime/policy.js";
+import { assertCommandAllowed, assertCwdInside } from "../../../runtime/policy.js";
 import type { ToolPackage } from "../types.js";
 
 const inputSchema = z.object({
@@ -33,6 +33,10 @@ export const toolPackage: ToolPackage<z.infer<typeof inputSchema>, z.infer<typeo
     run: async (input, ctx) => {
       try {
         assertCommandAllowed(input.cmd);
+        const baseRoot = ctx.memory.appDir ?? ctx.memory.outDir;
+        if (baseRoot) {
+          assertCwdInside(baseRoot, input.cwd);
+        }
         const result = await ctx.runCmdImpl(input.cmd, input.args, input.cwd);
         return {
           ok: result.ok,
