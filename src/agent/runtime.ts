@@ -33,6 +33,7 @@ const summarizeState = (state: AgentState): unknown => ({
   verifyHistory: state.verifyHistory.map((item) => ({ ok: item.ok, step: item.step, summary: item.summary })),
   lastError: state.lastError,
   patchPaths: state.patchPaths,
+  humanReviews: state.humanReviews,
   touchedFiles: state.touchedFiles.slice(-30)
 });
 
@@ -75,6 +76,7 @@ export const runAgent = async (args: {
   runCmdImpl?: (cmd: string, argv: string[], cwd: string) => Promise<CmdResult>;
   registry?: Record<string, ToolSpec<any>>;
   registryDeps?: Parameters<typeof createToolRegistry>[0];
+  humanReview?: (args: { reason: string; patchPaths: string[]; phase: AgentState["phase"] }) => Promise<boolean>;
 }): Promise<{ ok: boolean; summary: string; auditPath?: string; patchPaths?: string[]; state: AgentState }> => {
   const provider = args.provider ?? getProviderFromEnv();
   const runCmdImpl = args.runCmdImpl ?? runCmd;
@@ -106,6 +108,7 @@ export const runAgent = async (args: {
       usedRepairs: 0
     },
     patchPaths: [],
+    humanReviews: [],
     touchedFiles: [],
     toolCalls: [],
     toolResults: []
@@ -305,8 +308,10 @@ export const runAgent = async (args: {
 
       const result = await tool.run(parsed.data, ctx);
       const touched = result.meta?.touchedPaths ?? [];
+      const beforePatches = new Set(state.patchPaths);
       state.touchedFiles = Array.from(new Set([...state.touchedFiles, ...touched]));
       state.patchPaths = Array.from(new Set([...state.patchPaths, ...ctx.memory.patchPaths]));
+      const newPatchPaths = state.patchPaths.filter((path) => !beforePatches.has(path));
 
       state.toolResults.push(normalizeToolResults(call.name, result.ok, result.ok ? "ok" : result.error?.message));
       turnAuditResults.push({
@@ -315,6 +320,29 @@ export const runAgent = async (args: {
         error: result.ok ? undefined : `${result.error?.message ?? "tool failed"}${result.error?.detail ? ` (${truncate(result.error.detail)})` : ""}`,
         touchedPaths: touched
       });
+
+      if (newPatchPaths.length > 0 && args.humanReview) {
+        const approved = await args.humanReview({
+          reason: "Generated PATCH files require manual merge",
+          patchPaths: newPatchPaths,
+          phase: state.phase
+        });
+        state.humanReviews.push({
+          reason: "Generated PATCH files require manual merge",
+          approved,
+          patchPaths: newPatchPaths
+        });
+        if (!approved) {
+          state.phase = "FAILED";
+          state.lastError = {
+            kind: "Config",
+            message: "Human review rejected automatic continuation after PATCH generation"
+          };
+        }
+      }
+      if (state.phase === "FAILED") {
+        continue;
+      }
 
       if (call.name === "tool_bootstrap_project" && result.ok) {
         const data = result.data as { appDir: string; usedLLM: boolean };

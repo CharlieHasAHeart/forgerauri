@@ -329,4 +329,71 @@ describe("agent runtime", () => {
     expect(result.state.budgets.usedRepairs).toBeGreaterThan(result.state.budgets.maxPatches);
     expect(result.state.budgets.usedPatches).toBe(result.state.budgets.usedRepairs);
   });
+
+  test("requests human review when patch files are generated", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
+    const specPath = await writeSpec(root);
+    const outDir = join(root, "generated");
+    const provider = new MockProvider(new Array(20).fill(emptyCalls));
+
+    const result = await runAgent({
+      goal: "verify then repair with human review",
+      specPath,
+      outDir,
+      apply: true,
+      verify: true,
+      repair: true,
+      provider,
+      maxTurns: 20,
+      registryDeps: {
+        runBootstrapProjectImpl: mockBootstrap,
+        runDesignContractImpl: async () => ({ contract: mockContract, attempts: 1, raw: "{}" }),
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => ({
+          appDir: join(materializeOutDir, "agent-demo"),
+          contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
+          summary: { wrote: 0, skipped: 3 }
+        }),
+        runDesignUxImpl: async () => ({ ux: mockUx, attempts: 1, raw: "{}" }),
+        runMaterializeUxImpl: async ({ projectRoot }) => ({ uxPath: join(projectRoot, "src/lib/design/ux.json"), summary: { wrote: 0, skipped: 2 } }),
+        runDesignImplementationImpl: async () => ({ impl: mockImpl, attempts: 1, raw: "{}" }),
+        runMaterializeImplementationImpl: async ({ projectRoot }) => ({
+          implPath: join(projectRoot, "src/lib/design/implementation.json"),
+          summary: { wrote: 0, skipped: 2 }
+        }),
+        runDesignDeliveryImpl: async () => ({ delivery: mockDelivery, attempts: 1, raw: "{}" }),
+        runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
+          deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
+          summary: { wrote: 0, skipped: 4 }
+        }),
+        runVerifyProjectImpl: async () => ({
+          ok: false,
+          step: "build",
+          results: [
+            { name: "install", ok: true, code: 0, stdout: "ok", stderr: "", skipped: true },
+            { name: "install_retry", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+            { name: "build", ok: false, code: 1, stdout: "", stderr: "type error" },
+            { name: "build_retry", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+            { name: "cargo_check", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+            { name: "tauri_check", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true },
+            { name: "tauri_build", ok: true, code: 0, stdout: "skipped", stderr: "", skipped: true }
+          ],
+          summary: "verify failed at build",
+          classifiedError: "TS",
+          suggestion: "fix ts"
+        }),
+        repairOnceImpl: async () => ({
+          ok: true,
+          summary: "patched",
+          audit: [],
+          patchPaths: [join(outDir, "agent-demo", "generated/patches/src_App.svelte.patch")]
+        })
+      },
+      humanReview: async () => false
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.state.humanReviews.length).toBeGreaterThan(0);
+    expect(result.state.humanReviews[0]?.approved).toBe(false);
+    expect(result.summary).toContain("Human review rejected");
+  });
 });

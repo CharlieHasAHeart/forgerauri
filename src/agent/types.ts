@@ -76,6 +76,7 @@ export type AgentState = {
   };
   budgets: AgentBudgets;
   patchPaths: string[];
+  humanReviews: Array<{ reason: string; approved: boolean; patchPaths: string[] }>;
   touchedFiles: string[];
   toolCalls: Array<{ name: string; input: unknown }>;
   toolResults: Array<{ name: string; ok: boolean; note?: string }>;

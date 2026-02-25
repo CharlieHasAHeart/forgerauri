@@ -26,6 +26,7 @@
  * - Then run list_lint_runs/list_fix_runs from action command selector to verify DB history increases.
  */
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 import process from "node:process";
 import { ZodError } from "zod";
 import { loadEnvFile } from "./config/loadEnv.js";
@@ -49,6 +50,7 @@ type CliOptions = {
   verifySpecified: boolean;
   repair: boolean;
   repairSpecified: boolean;
+  autoApprove: boolean;
   maxTurns: number;
   maxPatches: number;
 };
@@ -73,6 +75,7 @@ const parseArgs = (argv: string[]): CliOptions => {
   let verifySpecified = false;
   let repair = false;
   let repairSpecified = false;
+  let autoApprove = false;
   let maxTurns = 8;
   let maxPatches = 6;
 
@@ -131,6 +134,10 @@ const parseArgs = (argv: string[]): CliOptions => {
       repairSpecified = true;
       continue;
     }
+    if (arg === "--auto-approve") {
+      autoApprove = true;
+      continue;
+    }
 
     if (!arg.startsWith("-") && !specPath) {
       specPath = arg;
@@ -149,6 +156,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     verifySpecified,
     repair,
     repairSpecified,
+    autoApprove,
     maxTurns,
     maxPatches,
   };
@@ -186,7 +194,7 @@ const printPlan = (plan: Plan): void => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--max-turns N] [--max-patches N]");
+  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N]");
   console.error("- Optional basic scaffold: pnpm dev -- <spec.json> --out <dir> --plan|--apply");
 };
 
@@ -202,6 +210,23 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
   const finalVerify = options.plan ? false : verify;
   const finalRepair = options.plan ? false : repair;
 
+  const humanReview = options.autoApprove
+    ? undefined
+    : async (args: { reason: string; patchPaths: string[]; phase: string }): Promise<boolean> => {
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+          throw new Error("Human review required but no TTY available. Re-run with --auto-approve.");
+        }
+        console.log(`Human review required at phase=${args.phase}: ${args.reason}`);
+        args.patchPaths.forEach((path) => console.log(`- ${path}`));
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        try {
+          const answer = (await rl.question("Continue automatic flow? [y/N] ")).trim().toLowerCase();
+          return answer === "y" || answer === "yes";
+        } finally {
+          rl.close();
+        }
+      };
+
   const result = await runAgent({
     goal: options.goal,
     specPath: options.specPath,
@@ -210,7 +235,8 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     verify: finalVerify,
     repair: finalRepair,
     maxTurns: options.maxTurns,
-    maxPatches: options.maxPatches
+    maxPatches: options.maxPatches,
+    humanReview
   });
 
   console.log(`Agent result: ${result.ok ? "ok" : "failed"}`);
