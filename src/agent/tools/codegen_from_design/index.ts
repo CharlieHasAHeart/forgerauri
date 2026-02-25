@@ -6,6 +6,9 @@ import { contractDesignV1Schema, type ContractDesignV1 } from "../../design/cont
 import { assertPathInside } from "../../../runtime/policy.js";
 import type { ToolPackage } from "../types.js";
 
+const GENERATED_BEGIN = "// BEGIN GENERATED COMMANDS (codegen_from_design)";
+const GENERATED_END = "// END GENERATED COMMANDS (codegen_from_design)";
+
 const inputSchema = z.object({
   projectRoot: z.string().min(1),
   apply: z.boolean().default(true)
@@ -170,7 +173,8 @@ ${rustStruct(inputName, command.inputs)}
 ${rustStruct(outputName, command.outputs)}
 
 #[tauri::command]
-pub async fn ${command.name}(_app: tauri::AppHandle, _input: Option<${inputName}>) -> ApiResponse<${outputName}> {
+pub async fn ${command.name}(_app: tauri::AppHandle, input: Option<${inputName}>) -> ApiResponse<${outputName}> {
+    let _ = input;
     ApiResponse::failure(ApiError::internal("TODO: implement ${command.name}"))
 }
 `;
@@ -182,6 +186,62 @@ const templateRustMod = (commands: ContractDesignV1["commands"]): string => {
   return `${lines.join("\n")}\n`;
 };
 
+const ensureCommandsMod = (content: string): string => {
+  const normalized = content.replace(/\r\n/g, "\n");
+  if (/^\s*pub\s+mod\s+generated\s*;\s*$/m.test(normalized)) {
+    return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
+  }
+
+  const base = normalized.trimEnd();
+  return `${base.length > 0 ? `${base}\n` : ""}pub mod generated;\n`;
+};
+
+const generatedBlock = (commandNames: string[]): string => {
+  const sorted = [...commandNames].sort((a, b) => a.localeCompare(b));
+  const handlers = sorted.map((name) => `commands::generated::${name}::${name},`).join("\n");
+  return `${GENERATED_BEGIN}\n${handlers}\n${GENERATED_END}`;
+};
+
+const upsertGeneratedHandlersIntoLib = (content: string, commandNames: string[]): string => {
+  const normalized = content.replace(/\r\n/g, "\n");
+  const block = generatedBlock(commandNames);
+  const markerRegex = /\/\/ BEGIN GENERATED COMMANDS \(codegen_from_design\)[\s\S]*?\/\/ END GENERATED COMMANDS \(codegen_from_design\)/m;
+
+  if (markerRegex.test(normalized)) {
+    return normalized.replace(markerRegex, block);
+  }
+
+  const invokeRegex = /(\.invoke_handler\(\s*tauri::generate_handler!\[)([\s\S]*?)(\]\s*\)\s*)/m;
+  const match = normalized.match(invokeRegex);
+  if (!match) {
+    throw new Error(
+      "Cannot find invoke_handler(tauri::generate_handler![...]) in src-tauri/src/lib.rs; add the generated marker block manually"
+    );
+  }
+
+  const before = match[1] ?? "";
+  const middle = match[2] ?? "";
+  const after = match[3] ?? "";
+  const trimmed = middle.trim();
+  const comma = trimmed.length > 0 && !trimmed.endsWith(",") ? "," : "";
+  const nextMiddle = `${trimmed}${comma}${trimmed.length > 0 ? "\n" : ""}${block}\n`;
+
+  return normalized.replace(invokeRegex, `${before}${nextMiddle}${after}`);
+};
+
+const minimalLibRs = (commandNames: string[]): string => `mod commands;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+${generatedBlock(commandNames)}
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+`;
+
 export const runCodegenFromDesign = async (args: {
   projectRoot: string;
   apply: boolean;
@@ -191,6 +251,8 @@ export const runCodegenFromDesign = async (args: {
   const uxPath = join(root, "src/lib/design/ux.json");
   const implementationPath = join(root, "src/lib/design/implementation.json");
   const deliveryPath = join(root, "src/lib/design/delivery.json");
+  const commandsModPath = join(root, "src-tauri/src/commands/mod.rs");
+  const libRsPath = join(root, "src-tauri/src/lib.rs");
 
   if (!existsSync(contractPath)) {
     throw new Error(`Missing required contract file: ${contractPath}`);
@@ -206,9 +268,22 @@ export const runCodegenFromDesign = async (args: {
   const contractRaw = JSON.parse(await readFile(contractPath, "utf8")) as unknown;
   const contract = contractDesignV1Schema.parse(contractRaw);
 
+  const commandNames = [...contract.commands].map((command) => command.name).sort((a, b) => a.localeCompare(b));
+
+  const commandsModContent = existsSync(commandsModPath) ? ensureCommandsMod(await readFile(commandsModPath, "utf8")) : "pub mod generated;\n";
+
+  let libRsContent = "";
+  if (existsSync(libRsPath)) {
+    libRsContent = upsertGeneratedHandlersIntoLib(await readFile(libRsPath, "utf8"), commandNames);
+  } else {
+    libRsContent = minimalLibRs(commandNames);
+  }
+
   const targetFiles: Record<string, string> = {
     "src/lib/api/generated/contract.ts": templateTsClient(contract),
-    "src-tauri/src/commands/generated/mod.rs": templateRustMod(contract.commands)
+    "src-tauri/src/commands/generated/mod.rs": templateRustMod(contract.commands),
+    "src-tauri/src/commands/mod.rs": commandsModContent,
+    "src-tauri/src/lib.rs": libRsContent
   };
 
   for (const command of contract.commands) {
