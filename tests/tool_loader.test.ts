@@ -9,7 +9,13 @@ describe("tool discovery", () => {
     expect(names).toEqual([
       "tool_bootstrap_project",
       "tool_design_contract",
+      "tool_design_delivery",
+      "tool_design_implementation",
+      "tool_design_ux",
       "tool_materialize_contract",
+      "tool_materialize_delivery",
+      "tool_materialize_implementation",
+      "tool_materialize_ux",
       "tool_read_files",
       "tool_repair_once",
       "tool_run_cmd",
@@ -22,7 +28,7 @@ describe("tool discovery", () => {
     });
 
     const docs = buildToolDocPack(registry);
-    expect(docs).toHaveLength(7);
+    expect(docs).toHaveLength(13);
     expect(docs[0]?.name).toBe("tool_bootstrap_project");
   });
 });

@@ -1,8 +1,14 @@
 import { repairOnce } from "../../repair/repairLoop.js";
 import { runBootstrapProject } from "./bootstrapProject.js";
 import { runDesignContract } from "./design_contract/index.js";
+import { runDesignDelivery } from "./design_delivery/index.js";
+import { runDesignImplementation } from "./design_implementation/index.js";
+import { runDesignUx } from "./design_ux/index.js";
 import { loadToolPackages, buildToolDocPack } from "./loader.js";
 import { runMaterializeContract } from "./materialize_contract/index.js";
+import { runMaterializeDelivery } from "./materialize_delivery/index.js";
+import { runMaterializeImplementation } from "./materialize_implementation/index.js";
+import { runMaterializeUx } from "./materialize_ux/index.js";
 import { runVerifyProject } from "./verifyProject.js";
 import type { ToolDocPack, ToolResult, ToolRunContext, ToolSpec } from "./types.js";
 
@@ -10,6 +16,12 @@ export type ToolRegistryDeps = {
   runBootstrapProjectImpl?: typeof runBootstrapProject;
   runDesignContractImpl?: typeof runDesignContract;
   runMaterializeContractImpl?: typeof runMaterializeContract;
+  runDesignUxImpl?: typeof runDesignUx;
+  runMaterializeUxImpl?: typeof runMaterializeUx;
+  runDesignImplementationImpl?: typeof runDesignImplementation;
+  runMaterializeImplementationImpl?: typeof runMaterializeImplementation;
+  runDesignDeliveryImpl?: typeof runDesignDelivery;
+  runMaterializeDeliveryImpl?: typeof runMaterializeDelivery;
   runVerifyProjectImpl?: typeof runVerifyProject;
   repairOnceImpl?: typeof repairOnce;
   toolsBaseDir?: string;
@@ -49,6 +61,12 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
   const runBootstrap = deps?.runBootstrapProjectImpl ?? runBootstrapProject;
   const runDesign = deps?.runDesignContractImpl ?? runDesignContract;
   const runMaterialize = deps?.runMaterializeContractImpl ?? runMaterializeContract;
+  const runDesignUxImpl = deps?.runDesignUxImpl ?? runDesignUx;
+  const runMaterializeUxImpl = deps?.runMaterializeUxImpl ?? runMaterializeUx;
+  const runDesignImplementationImpl = deps?.runDesignImplementationImpl ?? runDesignImplementation;
+  const runMaterializeImplementationImpl = deps?.runMaterializeImplementationImpl ?? runMaterializeImplementation;
+  const runDesignDeliveryImpl = deps?.runDesignDeliveryImpl ?? runDesignDelivery;
+  const runMaterializeDeliveryImpl = deps?.runMaterializeDeliveryImpl ?? runMaterializeDelivery;
   const runVerify = deps?.runVerifyProjectImpl ?? runVerifyProject;
   const runRepair = deps?.repairOnceImpl ?? repairOnce;
 
@@ -155,6 +173,166 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
           error: {
             code: "MATERIALIZE_CONTRACT_FAILED",
             message: error instanceof Error ? error.message : "contract materialization failed"
+          }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_design_ux) {
+    loaded.tool_design_ux = withRunOverride(loaded.tool_design_ux, async (input, ctx) => {
+      try {
+        const result = await runDesignUxImpl({
+          goal: input.goal,
+          specPath: input.specPath,
+          contract: input.contract,
+          projectRoot: input.projectRoot,
+          provider: ctx.provider
+        });
+        return {
+          ok: true,
+          data: { ux: result.ux, attempts: result.attempts },
+          meta: { touchedPaths: [] }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: { code: "DESIGN_UX_FAILED", message: error instanceof Error ? error.message : "ux design failed" }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_materialize_ux) {
+    loaded.tool_materialize_ux = withRunOverride(loaded.tool_materialize_ux, async (input) => {
+      try {
+        const result = await runMaterializeUxImpl({
+          ux: input.ux,
+          projectRoot: input.projectRoot,
+          apply: input.apply
+        });
+        return {
+          ok: true,
+          data: result,
+          meta: {
+            touchedPaths: [result.uxPath, `${input.projectRoot}/src/lib/design/ux.ts`]
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: { code: "MATERIALIZE_UX_FAILED", message: error instanceof Error ? error.message : "ux materialization failed" }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_design_implementation) {
+    loaded.tool_design_implementation = withRunOverride(loaded.tool_design_implementation, async (input, ctx) => {
+      try {
+        const result = await runDesignImplementationImpl({
+          goal: input.goal,
+          contract: input.contract,
+          ux: input.ux,
+          projectRoot: input.projectRoot,
+          provider: ctx.provider
+        });
+        return {
+          ok: true,
+          data: { impl: result.impl, attempts: result.attempts },
+          meta: { touchedPaths: [] }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "DESIGN_IMPLEMENTATION_FAILED",
+            message: error instanceof Error ? error.message : "implementation design failed"
+          }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_materialize_implementation) {
+    loaded.tool_materialize_implementation = withRunOverride(loaded.tool_materialize_implementation, async (input) => {
+      try {
+        const result = await runMaterializeImplementationImpl({
+          impl: input.impl,
+          projectRoot: input.projectRoot,
+          apply: input.apply
+        });
+        return {
+          ok: true,
+          data: result,
+          meta: {
+            touchedPaths: [result.implPath, `${input.projectRoot}/src/lib/design/implementation.ts`]
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "MATERIALIZE_IMPLEMENTATION_FAILED",
+            message: error instanceof Error ? error.message : "implementation materialization failed"
+          }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_design_delivery) {
+    loaded.tool_design_delivery = withRunOverride(loaded.tool_design_delivery, async (input, ctx) => {
+      try {
+        const result = await runDesignDeliveryImpl({
+          goal: input.goal,
+          contract: input.contract,
+          projectRoot: input.projectRoot,
+          provider: ctx.provider
+        });
+        return {
+          ok: true,
+          data: { delivery: result.delivery, attempts: result.attempts },
+          meta: { touchedPaths: [] }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "DESIGN_DELIVERY_FAILED",
+            message: error instanceof Error ? error.message : "delivery design failed"
+          }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_materialize_delivery) {
+    loaded.tool_materialize_delivery = withRunOverride(loaded.tool_materialize_delivery, async (input) => {
+      try {
+        const result = await runMaterializeDeliveryImpl({
+          delivery: input.delivery,
+          projectRoot: input.projectRoot,
+          apply: input.apply
+        });
+        return {
+          ok: true,
+          data: result,
+          meta: {
+            touchedPaths: [
+              result.deliveryPath,
+              `${input.projectRoot}/src/lib/design/delivery.ts`,
+              `${input.projectRoot}/scripts/preflight.sh`,
+              `${input.projectRoot}/src-tauri/icons/icon.png`
+            ]
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "MATERIALIZE_DELIVERY_FAILED",
+            message: error instanceof Error ? error.message : "delivery materialization failed"
           }
         };
       }

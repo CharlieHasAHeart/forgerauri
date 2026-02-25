@@ -1,7 +1,23 @@
 import type { CmdResult } from "../runner/runCmd.js";
-import type { ContractDesignV1 } from "./contract/schema.js";
+import type { ContractDesignV1 } from "./design/contract/schema.js";
+import type { DeliveryDesignV1 } from "./design/delivery/schema.js";
+import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
+import type { UXDesignV1 } from "./design/ux/schema.js";
 
-export type AgentPhase = "BOOT" | "DESIGN" | "MATERIALIZE" | "VERIFY" | "REPAIR" | "DONE" | "FAILED";
+export type AgentPhase =
+  | "BOOT"
+  | "DESIGN_CONTRACT"
+  | "MATERIALIZE_CONTRACT"
+  | "DESIGN_UX"
+  | "MATERIALIZE_UX"
+  | "DESIGN_IMPL"
+  | "MATERIALIZE_IMPL"
+  | "DESIGN_DELIVERY"
+  | "MATERIALIZE_DELIVERY"
+  | "VERIFY"
+  | "REPAIR"
+  | "DONE"
+  | "FAILED";
 
 export type ErrorKind = "Deps" | "TS" | "Rust" | "Tauri" | "Config" | "Unknown";
 
@@ -46,6 +62,12 @@ export type AgentState = {
   appDir?: string;
   contract?: ContractDesignV1;
   contractPath?: string;
+  ux?: UXDesignV1;
+  uxPath?: string;
+  impl?: ImplementationDesignV1;
+  implPath?: string;
+  delivery?: DeliveryDesignV1;
+  deliveryPath?: string;
   usedLLM: boolean;
   verifyHistory: VerifyProjectResult[];
   lastError?: {

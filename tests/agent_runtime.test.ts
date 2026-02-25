@@ -3,7 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { runAgent } from "../src/agent/runtime.js";
-import type { ContractDesignV1 } from "../src/agent/contract/schema.js";
+import type { ContractDesignV1 } from "../src/agent/design/contract/schema.js";
+import type { DeliveryDesignV1 } from "../src/agent/design/delivery/schema.js";
+import type { ImplementationDesignV1 } from "../src/agent/design/implementation/schema.js";
+import type { UXDesignV1 } from "../src/agent/design/ux/schema.js";
 import type { BootstrapProjectResult, VerifyProjectResult } from "../src/agent/types.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
@@ -46,6 +49,54 @@ const mockContract: ContractDesignV1 = {
   acceptance: { mustPass: ["pnpm_build", "cargo_check"] }
 };
 
+const mockUx: UXDesignV1 = {
+  version: "v1",
+  navigation: {
+    kind: "sidebar",
+    items: [{ id: "home", title: "Home", route: "/" }]
+  },
+  screens: [
+    {
+      id: "home",
+      title: "Home",
+      route: "/",
+      purpose: "Overview",
+      dataNeeds: [{ source: "command", command: "lint_config" }],
+      actions: [{ label: "Run Lint", command: "lint_config" }],
+      states: { loading: true, empty: "No data", error: "Failed" }
+    }
+  ]
+};
+
+const mockImpl: ImplementationDesignV1 = {
+  version: "v1",
+  rust: {
+    layering: "commands_service_repo",
+    services: [{ name: "lint_service", responsibilities: ["run lint"], usesTables: ["lint_runs"] }],
+    repos: [{ name: "lint_repo", table: "lint_runs", operations: ["insert", "list"] }],
+    errorModel: { pattern: "thiserror+ApiResponse", errorCodes: ["LINT_FAILED"] }
+  },
+  frontend: {
+    apiPattern: "invoke_wrapper+typed_meta",
+    stateManagement: "local",
+    validation: "simple"
+  }
+};
+
+const mockDelivery: DeliveryDesignV1 = {
+  version: "v1",
+  verifyPolicy: {
+    levelDefault: "basic",
+    gates: ["pnpm_install_if_needed", "pnpm_build", "cargo_check", "tauri_help"]
+  },
+  preflight: {
+    checks: [{ id: "node", description: "Node installed", cmd: "node --version", required: true }]
+  },
+  assets: {
+    icons: { required: true, paths: ["src-tauri/icons/icon.png"] }
+  }
+};
+
 const mockBootstrap = async (input: {
   specPath: string;
   outDir: string;
@@ -59,12 +110,12 @@ const mockBootstrap = async (input: {
 });
 
 describe("agent runtime", () => {
-  test("plan-only mode ends in DONE after BOOT", async () => {
+  test("plan-only mode still runs design/materialize chain then DONE", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
 
-    const provider = new MockProvider([emptyCalls]);
+    const provider = new MockProvider(new Array(20).fill(emptyCalls));
 
     const result = await runAgent({
       goal: "plan only",
@@ -74,24 +125,45 @@ describe("agent runtime", () => {
       verify: false,
       repair: false,
       provider,
-      maxTurns: 2,
+      maxTurns: 12,
       registryDeps: {
-        runBootstrapProjectImpl: mockBootstrap
+        runBootstrapProjectImpl: mockBootstrap,
+        runDesignContractImpl: async () => ({ contract: mockContract, attempts: 1, raw: "{}" }),
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => ({
+          appDir: join(materializeOutDir, "agent-demo"),
+          contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
+          summary: { wrote: 0, skipped: 3 }
+        }),
+        runDesignUxImpl: async () => ({ ux: mockUx, attempts: 1, raw: "{}" }),
+        runMaterializeUxImpl: async ({ projectRoot }) => ({ uxPath: join(projectRoot, "src/lib/design/ux.json"), summary: { wrote: 0, skipped: 2 } }),
+        runDesignImplementationImpl: async () => ({ impl: mockImpl, attempts: 1, raw: "{}" }),
+        runMaterializeImplementationImpl: async ({ projectRoot }) => ({
+          implPath: join(projectRoot, "src/lib/design/implementation.json"),
+          summary: { wrote: 0, skipped: 2 }
+        }),
+        runDesignDeliveryImpl: async () => ({ delivery: mockDelivery, attempts: 1, raw: "{}" }),
+        runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
+          deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
+          summary: { wrote: 0, skipped: 4 }
+        })
       }
     });
 
     expect(result.ok).toBe(true);
     expect(result.state.phase).toBe("DONE");
     expect(result.state.verifyHistory).toHaveLength(0);
-    expect(result.state.contract).toBeUndefined();
+    expect(result.state.contract?.version).toBe("v1");
+    expect(result.state.ux?.version).toBe("v1");
+    expect(result.state.impl?.version).toBe("v1");
+    expect(result.state.delivery?.version).toBe("v1");
   });
 
-  test("verify success follows BOOT->DESIGN->MATERIALIZE->VERIFY->DONE", async () => {
+  test("verify success follows full staged phases and ends DONE", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
 
-    const provider = new MockProvider([emptyCalls, emptyCalls, emptyCalls, emptyCalls]);
+    const provider = new MockProvider(new Array(16).fill(emptyCalls));
     const phaseCalls: string[] = [];
 
     const result = await runAgent({
@@ -103,24 +175,50 @@ describe("agent runtime", () => {
       verifyLevel: "full",
       repair: true,
       provider,
-      maxTurns: 6,
+      maxTurns: 16,
       registryDeps: {
         runBootstrapProjectImpl: async (input) => {
           phaseCalls.push("BOOT");
           return mockBootstrap(input);
         },
         runDesignContractImpl: async () => {
-          phaseCalls.push("DESIGN");
+          phaseCalls.push("DESIGN_CONTRACT");
           return { contract: mockContract, attempts: 1, raw: "{}" };
         },
-        runMaterializeContractImpl: async ({ outDir: materializeOutDir, appDir }) => {
-          phaseCalls.push("MATERIALIZE");
-          expect(appDir).toBe(join(materializeOutDir, "agent-demo"));
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => {
+          phaseCalls.push("MATERIALIZE_CONTRACT");
           return {
             appDir: join(materializeOutDir, "agent-demo"),
             contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
             summary: { wrote: 0, skipped: 3 }
           };
+        },
+        runDesignUxImpl: async () => {
+          phaseCalls.push("DESIGN_UX");
+          return { ux: mockUx, attempts: 1, raw: "{}" };
+        },
+        runMaterializeUxImpl: async ({ projectRoot }) => {
+          phaseCalls.push("MATERIALIZE_UX");
+          return { uxPath: join(projectRoot, "src/lib/design/ux.json"), summary: { wrote: 0, skipped: 2 } };
+        },
+        runDesignImplementationImpl: async () => {
+          phaseCalls.push("DESIGN_IMPL");
+          return { impl: mockImpl, attempts: 1, raw: "{}" };
+        },
+        runMaterializeImplementationImpl: async ({ projectRoot }) => {
+          phaseCalls.push("MATERIALIZE_IMPL");
+          return {
+            implPath: join(projectRoot, "src/lib/design/implementation.json"),
+            summary: { wrote: 0, skipped: 2 }
+          };
+        },
+        runDesignDeliveryImpl: async () => {
+          phaseCalls.push("DESIGN_DELIVERY");
+          return { delivery: mockDelivery, attempts: 1, raw: "{}" };
+        },
+        runMaterializeDeliveryImpl: async ({ projectRoot }) => {
+          phaseCalls.push("MATERIALIZE_DELIVERY");
+          return { deliveryPath: join(projectRoot, "src/lib/design/delivery.json"), summary: { wrote: 0, skipped: 4 } };
         },
         runVerifyProjectImpl: async (input) => {
           phaseCalls.push("VERIFY");
@@ -139,9 +237,22 @@ describe("agent runtime", () => {
 
     expect(result.ok).toBe(true);
     expect(result.state.phase).toBe("DONE");
-    expect(phaseCalls).toEqual(["BOOT", "DESIGN", "MATERIALIZE", "VERIFY"]);
-    expect(result.state.contract?.version).toBe("v1");
+    expect(phaseCalls).toEqual([
+      "BOOT",
+      "DESIGN_CONTRACT",
+      "MATERIALIZE_CONTRACT",
+      "DESIGN_UX",
+      "MATERIALIZE_UX",
+      "DESIGN_IMPL",
+      "MATERIALIZE_IMPL",
+      "DESIGN_DELIVERY",
+      "MATERIALIZE_DELIVERY",
+      "VERIFY"
+    ]);
     expect(result.state.contractPath).toContain("forgetauri.contract.json");
+    expect(result.state.uxPath).toContain("ux.json");
+    expect(result.state.implPath).toContain("implementation.json");
+    expect(result.state.deliveryPath).toContain("delivery.json");
   });
 
   test("verify fail triggers repair and fails when repair budget exhausted", async () => {
@@ -149,7 +260,7 @@ describe("agent runtime", () => {
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
 
-    const provider = new MockProvider([emptyCalls, emptyCalls, emptyCalls, emptyCalls, emptyCalls, emptyCalls]);
+    const provider = new MockProvider(new Array(20).fill(emptyCalls));
 
     let repairCalls = 0;
 
@@ -177,7 +288,7 @@ describe("agent runtime", () => {
       verify: true,
       repair: true,
       provider,
-      maxTurns: 8,
+      maxTurns: 20,
       maxPatches: 1,
       registryDeps: {
         runBootstrapProjectImpl: mockBootstrap,
@@ -186,6 +297,18 @@ describe("agent runtime", () => {
           appDir: join(materializeOutDir, "agent-demo"),
           contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
           summary: { wrote: 0, skipped: 3 }
+        }),
+        runDesignUxImpl: async () => ({ ux: mockUx, attempts: 1, raw: "{}" }),
+        runMaterializeUxImpl: async ({ projectRoot }) => ({ uxPath: join(projectRoot, "src/lib/design/ux.json"), summary: { wrote: 0, skipped: 2 } }),
+        runDesignImplementationImpl: async () => ({ impl: mockImpl, attempts: 1, raw: "{}" }),
+        runMaterializeImplementationImpl: async ({ projectRoot }) => ({
+          implPath: join(projectRoot, "src/lib/design/implementation.json"),
+          summary: { wrote: 0, skipped: 2 }
+        }),
+        runDesignDeliveryImpl: async () => ({ delivery: mockDelivery, attempts: 1, raw: "{}" }),
+        runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
+          deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
+          summary: { wrote: 0, skipped: 4 }
         }),
         runVerifyProjectImpl: async () => failVerify,
         repairOnceImpl: async () => {
