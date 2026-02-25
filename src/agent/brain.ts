@@ -81,7 +81,7 @@ export const proposeNextActions = async (args: {
       content:
         "You are the Brain of a coding agent. You must call tools and never fabricate results. " +
         "Hard guardrails: user-zone files cannot be overwritten directly, only patch artifacts are allowed. " +
-        "Use tool documentation below to choose calls. Prefer high-level flow: bootstrap -> design_contract -> materialize_contract -> design_ux -> materialize_ux -> design_implementation -> materialize_implementation -> design_delivery -> materialize_delivery -> verify -> repair(if verify fails). " +
+        "Use tool documentation below to choose calls. Prefer high-level flow: bootstrap -> design_contract -> materialize_contract -> design_ux -> materialize_ux -> design_implementation -> materialize_implementation -> design_delivery -> materialize_delivery -> codegen_from_design -> verify -> repair(if verify fails). " +
         "Return JSON only: {\"toolCalls\":[{\"name\":\"...\",\"input\":{}}],\"note\":\"optional\"}."
     },
     {
@@ -90,7 +90,7 @@ export const proposeNextActions = async (args: {
         `Goal:\n${args.goal}\n\n` +
         `Tool docs:\n${renderToolDocs(args.toolDocs)}\n\n` +
         `Current state summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
-        `Constraints:\n- maxToolCallsPerTurn=${args.maxToolCallsPerTurn}\n- BOOT should use tool_bootstrap_project\n- DESIGN_CONTRACT should use tool_design_contract\n- MATERIALIZE_CONTRACT should use tool_materialize_contract\n- DESIGN_UX should use tool_design_ux\n- MATERIALIZE_UX should use tool_materialize_ux\n- DESIGN_IMPL should use tool_design_implementation\n- MATERIALIZE_IMPL should use tool_materialize_implementation\n- DESIGN_DELIVERY should use tool_design_delivery\n- MATERIALIZE_DELIVERY should use tool_materialize_delivery\n- VERIFY should use tool_verify_project\n- REPAIR should use tool_repair_once then verify`
+        `Constraints:\n- maxToolCallsPerTurn=${args.maxToolCallsPerTurn}\n- BOOT should use tool_bootstrap_project\n- DESIGN_CONTRACT should use tool_design_contract\n- MATERIALIZE_CONTRACT should use tool_materialize_contract\n- DESIGN_UX should use tool_design_ux\n- MATERIALIZE_UX should use tool_materialize_ux\n- DESIGN_IMPL should use tool_design_implementation\n- MATERIALIZE_IMPL should use tool_materialize_implementation\n- DESIGN_DELIVERY should use tool_design_delivery\n- MATERIALIZE_DELIVERY should use tool_materialize_delivery\n- CODEGEN_FROM_DESIGN should use tool_codegen_from_design\n- VERIFY should use tool_verify_project\n- REPAIR should use tool_repair_once then verify`
     }
   ];
 

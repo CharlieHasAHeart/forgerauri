@@ -1,5 +1,6 @@
 import { repairOnce } from "../../repair/repairLoop.js";
 import { runBootstrapProject } from "./bootstrapProject.js";
+import { runCodegenFromDesign } from "./codegen_from_design/index.js";
 import { runDesignContract } from "./design_contract/index.js";
 import { runDesignDelivery } from "./design_delivery/index.js";
 import { runDesignImplementation } from "./design_implementation/index.js";
@@ -22,6 +23,7 @@ export type ToolRegistryDeps = {
   runMaterializeImplementationImpl?: typeof runMaterializeImplementation;
   runDesignDeliveryImpl?: typeof runDesignDelivery;
   runMaterializeDeliveryImpl?: typeof runMaterializeDelivery;
+  runCodegenFromDesignImpl?: typeof runCodegenFromDesign;
   runVerifyProjectImpl?: typeof runVerifyProject;
   repairOnceImpl?: typeof repairOnce;
   toolsBaseDir?: string;
@@ -293,6 +295,32 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
           error: {
             code: "MATERIALIZE_DELIVERY_FAILED",
             message: error instanceof Error ? error.message : "delivery materialization failed"
+          }
+        };
+      }
+    });
+  }
+
+  if (deps?.runCodegenFromDesignImpl && loaded.tool_codegen_from_design) {
+    loaded.tool_codegen_from_design = withRunOverride(loaded.tool_codegen_from_design, async (input) => {
+      try {
+        const result = await deps.runCodegenFromDesignImpl!({
+          projectRoot: input.projectRoot,
+          apply: input.apply
+        });
+        return {
+          ok: true,
+          data: result,
+          meta: {
+            touchedPaths: result.generated.map((relativePath) => `${input.projectRoot}/${relativePath}`)
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "CODEGEN_FROM_DESIGN_FAILED",
+            message: error instanceof Error ? error.message : "codegen from design failed"
           }
         };
       }

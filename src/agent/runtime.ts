@@ -22,6 +22,7 @@ const summarizeState = (state: AgentState): unknown => ({
   uxPath: state.uxPath,
   implPath: state.implPath,
   deliveryPath: state.deliveryPath,
+  codegenSummary: state.codegenSummary,
   counts: {
     contractCommands: state.contract?.commands.length ?? 0,
     uxScreens: state.ux?.screens.length ?? 0,
@@ -250,6 +251,16 @@ export const runAgent = async (args: {
             }
           }
         ];
+      } else if (state.phase === "CODEGEN_FROM_DESIGN") {
+        toolCalls = [
+          {
+            name: "tool_codegen_from_design",
+            input: {
+              projectRoot: requiredInput(state.appDir, "codegen phase missing appDir"),
+              apply: state.flags.apply
+            }
+          }
+        ];
       } else if (state.phase === "VERIFY" && state.appDir) {
         toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir } }];
       } else if (state.phase === "REPAIR") {
@@ -399,6 +410,16 @@ export const runAgent = async (args: {
       if (call.name === "tool_materialize_delivery" && result.ok) {
         const data = result.data as { deliveryPath: string };
         state.deliveryPath = data.deliveryPath;
+        state.phase = state.flags.verify ? "CODEGEN_FROM_DESIGN" : "DONE";
+      }
+
+      if (call.name === "tool_codegen_from_design" && result.ok) {
+        const data = result.data as { generated: string[]; summary: { wrote: number; skipped: number } };
+        state.codegenSummary = {
+          generatedFilesCount: data.generated.length,
+          wrote: data.summary.wrote,
+          skipped: data.summary.skipped
+        };
         state.phase = state.flags.verify ? "VERIFY" : "DONE";
       }
 

@@ -145,6 +145,11 @@ describe("agent runtime", () => {
         runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
           deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
           summary: { wrote: 0, skipped: 4 }
+        }),
+        runCodegenFromDesignImpl: async () => ({
+          ok: true,
+          generated: ["src/lib/api/generated/contract.ts"],
+          summary: { wrote: 0, skipped: 1 }
         })
       }
     });
@@ -219,6 +224,15 @@ describe("agent runtime", () => {
           phaseCalls.push("MATERIALIZE_DELIVERY");
           return { deliveryPath: join(projectRoot, "src/lib/design/delivery.json"), summary: { wrote: 0, skipped: 4 } };
         },
+        runCodegenFromDesignImpl: async ({ projectRoot }) => {
+          phaseCalls.push("CODEGEN_FROM_DESIGN");
+          expect(projectRoot).toContain("agent-demo");
+          return {
+            ok: true,
+            generated: ["src/lib/api/generated/contract.ts", "src-tauri/src/commands/generated/lint_config.rs"],
+            summary: { wrote: 1, skipped: 1 }
+          };
+        },
         runVerifyProjectImpl: async (input) => {
           phaseCalls.push("VERIFY");
           expect(input.projectRoot).toContain("agent-demo");
@@ -246,12 +260,14 @@ describe("agent runtime", () => {
       "MATERIALIZE_IMPL",
       "DESIGN_DELIVERY",
       "MATERIALIZE_DELIVERY",
+      "CODEGEN_FROM_DESIGN",
       "VERIFY"
     ]);
     expect(result.state.contractPath).toContain("forgetauri.contract.json");
     expect(result.state.uxPath).toContain("ux.json");
     expect(result.state.implPath).toContain("implementation.json");
     expect(result.state.deliveryPath).toContain("delivery.json");
+    expect(result.state.codegenSummary?.generatedFilesCount).toBe(2);
   });
 
   test("verify fail triggers repair and fails when repair budget exhausted", async () => {
@@ -309,6 +325,11 @@ describe("agent runtime", () => {
           deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
           summary: { wrote: 0, skipped: 4 }
         }),
+        runCodegenFromDesignImpl: async () => ({
+          ok: true,
+          generated: ["src/lib/api/generated/contract.ts"],
+          summary: { wrote: 0, skipped: 1 }
+        }),
         runVerifyProjectImpl: async () => failVerify,
         repairOnceImpl: async () => {
           repairCalls += 1;
@@ -364,6 +385,11 @@ describe("agent runtime", () => {
         runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
           deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
           summary: { wrote: 0, skipped: 4 }
+        }),
+        runCodegenFromDesignImpl: async () => ({
+          ok: true,
+          generated: ["src/lib/api/generated/contract.ts"],
+          summary: { wrote: 0, skipped: 1 }
         }),
         runVerifyProjectImpl: async () => ({
           ok: false,
