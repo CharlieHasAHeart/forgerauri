@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { AgentAuditCollector } from "./audit.js";
 import { proposeNextActions } from "./brain.js";
 import { createToolRegistry, loadToolRegistryWithDocs } from "./tools/registry.js";
@@ -18,6 +18,8 @@ const summarizeState = (state: AgentState): unknown => ({
   goal: state.goal,
   projectRoot: state.projectRoot,
   appDir: state.appDir,
+  contractPath: state.contractPath,
+  contractCommandCount: state.contract?.commands.length ?? 0,
   flags: state.flags,
   budgets: state.budgets,
   verifyHistory: state.verifyHistory.map((item) => ({ ok: item.ok, step: item.step, summary: item.summary })),
@@ -141,6 +143,35 @@ export const runAgent = async (args: {
           }
         }
       ];
+    } else if (state.phase === "DESIGN") {
+      toolCalls = [
+        {
+          name: "tool_design_contract",
+          input: {
+            goal: state.goal,
+            specPath: state.specPath,
+            projectRoot: state.appDir
+          }
+        }
+      ];
+    } else if (state.phase === "MATERIALIZE") {
+      if (state.contract) {
+        toolCalls = [
+          {
+            name: "tool_materialize_contract",
+            input: {
+              contract: state.contract,
+              outDir: state.outDir,
+              appNameHint: state.appDir ? basename(state.appDir) : undefined,
+              apply: state.flags.apply
+            }
+          }
+        ];
+      } else {
+        toolCalls = [];
+        state.phase = "FAILED";
+        state.lastError = { kind: "Config", message: "materialize phase missing contract design" };
+      }
     } else if (state.phase === "VERIFY" && state.appDir) {
       toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir, verifyLevel: state.flags.verifyLevel } }];
     } else if (state.phase === "REPAIR") {
@@ -205,6 +236,20 @@ export const runAgent = async (args: {
         state.appDir = data.appDir;
         state.projectRoot = data.appDir;
         state.usedLLM = data.usedLLM;
+        state.phase = state.flags.verify ? "DESIGN" : "DONE";
+      }
+
+      if (call.name === "tool_design_contract" && result.ok) {
+        const data = result.data as { contract: AgentState["contract"] };
+        state.contract = data.contract;
+        state.phase = "MATERIALIZE";
+      }
+
+      if (call.name === "tool_materialize_contract" && result.ok) {
+        const data = result.data as { appDir: string; contractPath: string };
+        state.appDir = data.appDir;
+        state.projectRoot = data.appDir;
+        state.contractPath = data.contractPath;
         state.phase = state.flags.verify ? "VERIFY" : "DONE";
       }
 

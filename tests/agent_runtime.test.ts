@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { runAgent } from "../src/agent/runtime.js";
+import type { ContractDesignV1 } from "../src/agent/contract/schema.js";
 import type { BootstrapProjectResult, VerifyProjectResult } from "../src/agent/types.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
@@ -22,6 +23,29 @@ const writeSpec = async (root: string): Promise<string> => {
 
 const emptyCalls = JSON.stringify({ toolCalls: [] });
 
+const mockContract: ContractDesignV1 = {
+  version: "v1",
+  app: { name: "Agent Demo" },
+  commands: [
+    {
+      name: "lint_config",
+      purpose: "lint",
+      inputs: [{ name: "file_path", type: "string" }],
+      outputs: [{ name: "ok", type: "boolean" }]
+    }
+  ],
+  dataModel: {
+    tables: [
+      {
+        name: "lint_runs",
+        columns: [{ name: "id", type: "integer", primaryKey: true }]
+      }
+    ],
+    migrations: { strategy: "single" }
+  },
+  acceptance: { mustPass: ["pnpm_build", "cargo_check"] }
+};
+
 const mockBootstrap = async (input: {
   specPath: string;
   outDir: string;
@@ -35,7 +59,7 @@ const mockBootstrap = async (input: {
 });
 
 describe("agent runtime", () => {
-  test("plan-only mode ends in DONE", async () => {
+  test("plan-only mode ends in DONE after BOOT", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
@@ -58,15 +82,17 @@ describe("agent runtime", () => {
 
     expect(result.ok).toBe(true);
     expect(result.state.phase).toBe("DONE");
+    expect(result.state.verifyHistory).toHaveLength(0);
+    expect(result.state.contract).toBeUndefined();
   });
 
-  test("verify ok ends in DONE and forwards verifyLevel", async () => {
+  test("verify success follows BOOT->DESIGN->MATERIALIZE->VERIFY->DONE", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-agent-"));
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
 
-    const provider = new MockProvider([emptyCalls, emptyCalls]);
-    const verifyInputs: Array<{ projectRoot: string; verifyLevel: "basic" | "full" }> = [];
+    const provider = new MockProvider([emptyCalls, emptyCalls, emptyCalls, emptyCalls]);
+    const phaseCalls: string[] = [];
 
     const result = await runAgent({
       goal: "bootstrap and verify",
@@ -77,11 +103,27 @@ describe("agent runtime", () => {
       verifyLevel: "full",
       repair: true,
       provider,
-      maxTurns: 4,
+      maxTurns: 6,
       registryDeps: {
-        runBootstrapProjectImpl: mockBootstrap,
+        runBootstrapProjectImpl: async (input) => {
+          phaseCalls.push("BOOT");
+          return mockBootstrap(input);
+        },
+        runDesignContractImpl: async () => {
+          phaseCalls.push("DESIGN");
+          return { contract: mockContract, attempts: 1, raw: "{}" };
+        },
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => {
+          phaseCalls.push("MATERIALIZE");
+          return {
+            appDir: join(materializeOutDir, "agent-demo"),
+            contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
+            summary: { wrote: 0, skipped: 3 }
+          };
+        },
         runVerifyProjectImpl: async (input) => {
-          verifyInputs.push({ projectRoot: input.projectRoot, verifyLevel: input.verifyLevel });
+          phaseCalls.push("VERIFY");
+          expect(input.verifyLevel).toBe("full");
           return {
             ok: true,
             step: "none",
@@ -96,8 +138,9 @@ describe("agent runtime", () => {
 
     expect(result.ok).toBe(true);
     expect(result.state.phase).toBe("DONE");
-    expect(verifyInputs.length).toBeGreaterThan(0);
-    expect(verifyInputs[0]?.verifyLevel).toBe("full");
+    expect(phaseCalls).toEqual(["BOOT", "DESIGN", "MATERIALIZE", "VERIFY"]);
+    expect(result.state.contract?.version).toBe("v1");
+    expect(result.state.contractPath).toContain("forgetauri.contract.json");
   });
 
   test("verify fail triggers repair and fails when repair budget exhausted", async () => {
@@ -105,7 +148,7 @@ describe("agent runtime", () => {
     const specPath = await writeSpec(root);
     const outDir = join(root, "generated");
 
-    const provider = new MockProvider([emptyCalls, emptyCalls, emptyCalls, emptyCalls]);
+    const provider = new MockProvider([emptyCalls, emptyCalls, emptyCalls, emptyCalls, emptyCalls, emptyCalls]);
 
     let repairCalls = 0;
 
@@ -133,10 +176,16 @@ describe("agent runtime", () => {
       verify: true,
       repair: true,
       provider,
-      maxTurns: 6,
+      maxTurns: 8,
       maxPatches: 1,
       registryDeps: {
         runBootstrapProjectImpl: mockBootstrap,
+        runDesignContractImpl: async () => ({ contract: mockContract, attempts: 1, raw: "{}" }),
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => ({
+          appDir: join(materializeOutDir, "agent-demo"),
+          contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),
+          summary: { wrote: 0, skipped: 3 }
+        }),
         runVerifyProjectImpl: async () => failVerify,
         repairOnceImpl: async () => {
           repairCalls += 1;

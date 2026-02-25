@@ -81,7 +81,7 @@ export const proposeNextActions = async (args: {
       content:
         "You are the Brain of a coding agent. You must call tools and never fabricate results. " +
         "Hard guardrails: user-zone files cannot be overwritten directly, only patch artifacts are allowed. " +
-        "Use tool documentation below to choose calls. Prefer high-level flow: bootstrap -> verify -> repair(if verify fails). " +
+        "Use tool documentation below to choose calls. Prefer high-level flow: bootstrap -> design_contract -> materialize_contract -> verify -> repair(if verify fails). " +
         "Return JSON only: {\"toolCalls\":[{\"name\":\"...\",\"input\":{}}],\"note\":\"optional\"}."
     },
     {
@@ -90,7 +90,7 @@ export const proposeNextActions = async (args: {
         `Goal:\n${args.goal}\n\n` +
         `Tool docs:\n${renderToolDocs(args.toolDocs)}\n\n` +
         `Current state summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
-        `Constraints:\n- maxToolCallsPerTurn=${args.maxToolCallsPerTurn}\n- BOOT should use tool_bootstrap_project\n- VERIFY should use tool_verify_project\n- REPAIR should use tool_repair_once then verify`
+        `Constraints:\n- maxToolCallsPerTurn=${args.maxToolCallsPerTurn}\n- BOOT should use tool_bootstrap_project\n- DESIGN should use tool_design_contract\n- MATERIALIZE should use tool_materialize_contract\n- VERIFY should use tool_verify_project\n- REPAIR should use tool_repair_once then verify`
     }
   ];
 

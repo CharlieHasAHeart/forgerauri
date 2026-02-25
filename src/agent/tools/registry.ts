@@ -1,11 +1,15 @@
 import { repairOnce } from "../../repair/repairLoop.js";
 import { runBootstrapProject } from "./bootstrapProject.js";
+import { runDesignContract } from "./design_contract/index.js";
 import { loadToolPackages, buildToolDocPack } from "./loader.js";
+import { runMaterializeContract } from "./materialize_contract/index.js";
 import { runVerifyProject } from "./verifyProject.js";
 import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
 
 export type ToolRegistryDeps = {
   runBootstrapProjectImpl?: typeof runBootstrapProject;
+  runDesignContractImpl?: typeof runDesignContract;
+  runMaterializeContractImpl?: typeof runMaterializeContract;
   runVerifyProjectImpl?: typeof runVerifyProject;
   repairOnceImpl?: typeof repairOnce;
   toolsBaseDir?: string;
@@ -27,6 +31,8 @@ const withRunOverride = (
 export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Record<string, ToolSpec<any>>> => {
   const loaded = await loadToolPackages(deps?.toolsBaseDir);
   const runBootstrap = deps?.runBootstrapProjectImpl ?? runBootstrapProject;
+  const runDesign = deps?.runDesignContractImpl ?? runDesignContract;
+  const runMaterialize = deps?.runMaterializeContractImpl ?? runMaterializeContract;
   const runVerify = deps?.runVerifyProjectImpl ?? runVerifyProject;
   const runRepair = deps?.repairOnceImpl ?? repairOnce;
 
@@ -77,6 +83,62 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
         return {
           ok: false,
           error: { code: "VERIFY_FAILED", message: error instanceof Error ? error.message : "verify failed" }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_design_contract) {
+    loaded.tool_design_contract = withRunOverride(loaded.tool_design_contract, async (input, ctx) => {
+      try {
+        const result = await runDesign({
+          goal: input.goal,
+          specPath: input.specPath,
+          rawSpec: input.rawSpec,
+          projectRoot: input.projectRoot,
+          provider: ctx.provider
+        });
+        return {
+          ok: true,
+          data: { contract: result.contract, attempts: result.attempts },
+          meta: { touchedPaths: [] }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: { code: "DESIGN_CONTRACT_FAILED", message: error instanceof Error ? error.message : "contract design failed" }
+        };
+      }
+    });
+  }
+
+  if (loaded.tool_materialize_contract) {
+    loaded.tool_materialize_contract = withRunOverride(loaded.tool_materialize_contract, async (input) => {
+      try {
+        const result = await runMaterialize({
+          contract: input.contract,
+          outDir: input.outDir,
+          appNameHint: input.appNameHint,
+          apply: input.apply
+        });
+        return {
+          ok: true,
+          data: result,
+          meta: {
+            touchedPaths: [
+              result.contractPath,
+              `${result.appDir}/src/lib/contract/contract.json`,
+              `${result.appDir}/src-tauri/migrations/0004_contract.sql`
+            ]
+          }
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "MATERIALIZE_CONTRACT_FAILED",
+            message: error instanceof Error ? error.message : "contract materialization failed"
+          }
         };
       }
     });

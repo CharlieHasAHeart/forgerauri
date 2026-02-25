@@ -1,6 +1,7 @@
 import type { CmdResult } from "../runner/runCmd.js";
+import type { ContractDesignV1 } from "./contract/schema.js";
 
-export type AgentPhase = "BOOT" | "VERIFY" | "REPAIR" | "DONE" | "FAILED";
+export type AgentPhase = "BOOT" | "DESIGN" | "MATERIALIZE" | "VERIFY" | "REPAIR" | "DONE" | "FAILED";
 
 export type ErrorKind = "Deps" | "TS" | "Rust" | "Tauri" | "Config" | "Unknown";
 
@@ -43,6 +44,8 @@ export type AgentState = {
   };
   projectRoot?: string;
   appDir?: string;
+  contract?: ContractDesignV1;
+  contractPath?: string;
   usedLLM: boolean;
   verifyHistory: VerifyProjectResult[];
   lastError?: {
