@@ -12,6 +12,7 @@ import { runMaterializeImplementation } from "./materialize_implementation/index
 import { runMaterializeUx } from "./materialize_ux/index.js";
 import { runVerifyProject } from "./verifyProject.js";
 import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
+import { wrapToolRunWithOutputValidation } from "./util.js";
 
 export type ToolRegistryDeps = {
   runBootstrapProjectImpl?: typeof runBootstrapProject;
@@ -39,21 +40,7 @@ const withRunOverride = (
   run: (input: any, ctx: ToolRunContext) => ReturnType<ToolSpec<any>["run"]>
 ): ToolSpec<any> => ({
   ...tool,
-  run: async (input, ctx) => {
-    const result = await run(input, ctx);
-    if (!result.ok || !tool.outputSchema) return result;
-    const parsed = tool.outputSchema.safeParse(result.data);
-    if (parsed.success) return { ...result, data: parsed.data };
-    return {
-      ok: false,
-      error: {
-        code: "TOOL_OUTPUT_SCHEMA_INVALID",
-        message: `${tool.name} returned invalid output`,
-        detail: parsed.error.issues.map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`).join("; ")
-      },
-      meta: result.meta
-    };
-  }
+  run: wrapToolRunWithOutputValidation(tool, async (input, ctx) => run(input, ctx))
 });
 
 export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Record<string, ToolSpec<any>>> => {

@@ -2,7 +2,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
-import type { ToolDocPack, ToolPackage, ToolResult, ToolSpec } from "./types.js";
+import type { ToolDocPack, ToolPackage, ToolSpec } from "./types.js";
+import { wrapToolRunWithOutputValidation } from "./util.js";
 
 const toJsonSchema = (schema: z.ZodTypeAny): unknown => {
   const anyZ = z as unknown as { toJSONSchema?: (s: z.ZodTypeAny) => unknown };
@@ -53,35 +54,12 @@ const readDocs = async (toolDir: string): Promise<string> => {
   }
 };
 
-const formatIssues = (error: z.ZodError): string =>
-  error.issues.map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`).join("; ");
-
-const validateOutput = (tool: ToolPackage, result: ToolResult): ToolResult => {
-  if (!result.ok || !tool.manifest.outputSchema) return result;
-  const parsed = tool.manifest.outputSchema.safeParse(result.data);
-  if (parsed.success) {
-    return {
-      ...result,
-      data: parsed.data
-    };
-  }
-  return {
-    ok: false,
-    error: {
-      code: "TOOL_OUTPUT_SCHEMA_INVALID",
-      message: `${tool.manifest.name} returned invalid output`,
-      detail: formatIssues(parsed.error)
-    },
-    meta: result.meta
-  };
-};
-
 const normalizePackage = async (toolDir: string, toolPkg: ToolPackage): Promise<ToolSpec> => {
   const docs = await readDocs(toolDir);
   const inputJsonSchema = toJsonSchema(toolPkg.manifest.inputSchema);
   const outputJsonSchema = toolPkg.manifest.outputSchema ? toJsonSchema(toolPkg.manifest.outputSchema) : undefined;
 
-  return {
+  const spec: ToolSpec = {
     name: toolPkg.manifest.name,
     description: toolPkg.manifest.description,
     inputSchema: toolPkg.manifest.inputSchema,
@@ -92,12 +70,12 @@ const normalizePackage = async (toolDir: string, toolPkg: ToolPackage): Promise<
     capabilities: [...toolPkg.manifest.capabilities],
     safety: { ...toolPkg.manifest.safety, allowlist: toolPkg.manifest.safety.allowlist ? [...toolPkg.manifest.safety.allowlist] : undefined },
     docs,
-    run: async (input, ctx) => {
-      const result = await toolPkg.runtime.run(input, ctx);
-      return validateOutput(toolPkg, result);
-    },
+    run: async () => ({ ok: false, error: { code: "UNINITIALIZED", message: "tool run not initialized" } }),
     examples: toolPkg.runtime.examples ?? []
   };
+
+  spec.run = wrapToolRunWithOutputValidation(spec, toolPkg.runtime.run as ToolSpec["run"]);
+  return spec;
 };
 
 export const loadToolPackages = async (baseDir?: string): Promise<Record<string, ToolSpec>> => {

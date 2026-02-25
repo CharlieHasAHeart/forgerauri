@@ -42,5 +42,7 @@ describe("tool output schema validation", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe("TOOL_OUTPUT_SCHEMA_INVALID");
+    expect(result.error?.message).toBe("Tool output does not match outputSchema");
+    expect(result.error?.detail).toContain("commands");
   });
 });
