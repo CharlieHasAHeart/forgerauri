@@ -145,19 +145,13 @@ CREATE TABLE IF NOT EXISTS fix_runs (
 `;
 };
 
-export const templateDbMigrateWithBusiness = (): string => `use std::path::PathBuf;
+export const templateDbMigrateWithBusiness = (): string => `use std::fs;
+use std::path::PathBuf;
 
 use rusqlite::{params, Connection};
 
 use crate::db::conn::open_connection;
 use crate::errors::AppError;
-
-const MIGRATIONS: &[(i64, &str)] = &[
-    (1, include_str!("../../migrations/0001_init.sql")),
-    (2, include_str!("../../migrations/0002_tables.sql")),
-    (3, include_str!("../../migrations/0003_command_runs.sql")),
-    (4, include_str!("../../migrations/0004_business.sql")),
-];
 
 pub fn migrate_on_startup(app: &tauri::AppHandle) -> Result<(), AppError> {
     let _ = migrate(app)?;
@@ -174,20 +168,26 @@ pub fn migrate(app: &tauri::AppHandle) -> Result<(i64, PathBuf), AppError> {
 fn apply_migrations(conn: &mut Connection) -> Result<(), AppError> {
     let tx = conn.transaction()?;
 
-    tx.execute_batch(include_str!("../../migrations/0001_init.sql"))?;
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+            name TEXT PRIMARY KEY,
+            version INTEGER NOT NULL,
+            applied_at TEXT NOT NULL
+        )",
+    )?;
 
-    for (version, sql) in MIGRATIONS {
+    for (name, version, sql) in load_migrations()? {
         let exists: i64 = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = ?1)",
-            params![version],
+            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE name = ?1)",
+            params![name],
             |row| row.get(0),
         )?;
 
         if exists == 0 {
-            tx.execute_batch(sql)?;
+            tx.execute_batch(&sql)?;
             tx.execute(
-                "INSERT INTO schema_migrations(version, applied_at) VALUES(?1, datetime('now'))",
-                params![version],
+                "INSERT INTO schema_migrations(name, version, applied_at) VALUES(?1, ?2, datetime('now'))",
+                params![name, version],
             )?;
         }
     }
@@ -204,6 +204,35 @@ fn current_schema_version(conn: &Connection) -> Result<i64, AppError> {
     )?;
 
     Ok(version)
+}
+
+fn load_migrations() -> Result<Vec<(String, i64, String)>, AppError> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    let mut files: Vec<PathBuf> = fs::read_dir(dir)?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("sql"))
+        .collect();
+
+    files.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
+
+    let mut migrations = Vec::new();
+    for path in files {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| AppError::Internal("invalid migration filename".to_string()))?
+            .to_string();
+        let version = parse_version(&name);
+        let sql = fs::read_to_string(&path)?;
+        migrations.push((name, version, sql));
+    }
+
+    Ok(migrations)
+}
+
+fn parse_version(name: &str) -> i64 {
+    let digits: String = name.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    digits.parse::<i64>().unwrap_or(0)
 }
 `;
 
