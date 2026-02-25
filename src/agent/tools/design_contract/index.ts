@@ -11,6 +11,11 @@ const inputSchema = z.object({
   projectRoot: z.string().min(1).optional()
 });
 
+const outputSchema = z.object({
+  contract: contractDesignV1Schema,
+  attempts: z.number().int().positive()
+});
+
 const truncate = (value: string, max = 120000): string => (value.length > max ? `${value.slice(0, max)}\n...<truncated>` : value);
 
 export const runDesignContract = async (args: {
@@ -60,7 +65,7 @@ export const runDesignContract = async (args: {
 
 export const toolPackage: ToolPackage<
   z.infer<typeof inputSchema>,
-  z.infer<typeof contractDesignV1Schema>
+  z.infer<typeof outputSchema>
 > = {
   manifest: {
     name: "tool_design_contract",
@@ -69,7 +74,7 @@ export const toolPackage: ToolPackage<
     description: "Designs command/data contracts from goal + raw spec using LLM structured output.",
     capabilities: ["design", "contract", "business"],
     inputSchema,
-    outputSchema: contractDesignV1Schema,
+    outputSchema,
     safety: {
       sideEffects: "llm"
     }

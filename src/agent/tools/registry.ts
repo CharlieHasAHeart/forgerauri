@@ -4,7 +4,7 @@ import { runDesignContract } from "./design_contract/index.js";
 import { loadToolPackages, buildToolDocPack } from "./loader.js";
 import { runMaterializeContract } from "./materialize_contract/index.js";
 import { runVerifyProject } from "./verifyProject.js";
-import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
+import type { ToolDocPack, ToolResult, ToolRunContext, ToolSpec } from "./types.js";
 
 export type ToolRegistryDeps = {
   runBootstrapProjectImpl?: typeof runBootstrapProject;
@@ -25,7 +25,23 @@ const withRunOverride = (
   run: (input: any, ctx: ToolRunContext) => ReturnType<ToolSpec<any>["run"]>
 ): ToolSpec<any> => ({
   ...tool,
-  run
+  run: async (input, ctx) => {
+    const result = (await run(input, ctx)) as ToolResult;
+    if (!result.ok || !tool.outputSchema) return result;
+    const parsed = tool.outputSchema.safeParse(result.data);
+    if (parsed.success) {
+      return { ...result, data: parsed.data };
+    }
+    return {
+      ok: false,
+      error: {
+        code: "TOOL_OUTPUT_SCHEMA_INVALID",
+        message: `${tool.name} returned invalid output`,
+        detail: parsed.error.issues.map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`).join("; ")
+      },
+      meta: result.meta
+    };
+  }
 });
 
 export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Record<string, ToolSpec<any>>> => {
