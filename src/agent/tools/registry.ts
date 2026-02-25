@@ -4,13 +4,13 @@ import { runDesignContract } from "./design_contract/index.js";
 import { runDesignDelivery } from "./design_delivery/index.js";
 import { runDesignImplementation } from "./design_implementation/index.js";
 import { runDesignUx } from "./design_ux/index.js";
-import { loadToolPackages, buildToolDocPack } from "./loader.js";
+import { buildToolDocPack, loadToolPackages } from "./loader.js";
 import { runMaterializeContract } from "./materialize_contract/index.js";
 import { runMaterializeDelivery } from "./materialize_delivery/index.js";
 import { runMaterializeImplementation } from "./materialize_implementation/index.js";
 import { runMaterializeUx } from "./materialize_ux/index.js";
 import { runVerifyProject } from "./verifyProject.js";
-import type { ToolDocPack, ToolResult, ToolRunContext, ToolSpec } from "./types.js";
+import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
 
 export type ToolRegistryDeps = {
   runBootstrapProjectImpl?: typeof runBootstrapProject;
@@ -38,12 +38,10 @@ const withRunOverride = (
 ): ToolSpec<any> => ({
   ...tool,
   run: async (input, ctx) => {
-    const result = (await run(input, ctx)) as ToolResult;
+    const result = await run(input, ctx);
     if (!result.ok || !tool.outputSchema) return result;
     const parsed = tool.outputSchema.safeParse(result.data);
-    if (parsed.success) {
-      return { ...result, data: parsed.data };
-    }
+    if (parsed.success) return { ...result, data: parsed.data };
     return {
       ok: false,
       error: {
@@ -58,22 +56,13 @@ const withRunOverride = (
 
 export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Record<string, ToolSpec<any>>> => {
   const loaded = await loadToolPackages(deps?.toolsBaseDir);
-  const runBootstrap = deps?.runBootstrapProjectImpl ?? runBootstrapProject;
-  const runDesign = deps?.runDesignContractImpl ?? runDesignContract;
-  const runMaterialize = deps?.runMaterializeContractImpl ?? runMaterializeContract;
-  const runDesignUxImpl = deps?.runDesignUxImpl ?? runDesignUx;
-  const runMaterializeUxImpl = deps?.runMaterializeUxImpl ?? runMaterializeUx;
-  const runDesignImplementationImpl = deps?.runDesignImplementationImpl ?? runDesignImplementation;
-  const runMaterializeImplementationImpl = deps?.runMaterializeImplementationImpl ?? runMaterializeImplementation;
-  const runDesignDeliveryImpl = deps?.runDesignDeliveryImpl ?? runDesignDelivery;
-  const runMaterializeDeliveryImpl = deps?.runMaterializeDeliveryImpl ?? runMaterializeDelivery;
-  const runVerify = deps?.runVerifyProjectImpl ?? runVerifyProject;
-  const runRepair = deps?.repairOnceImpl ?? repairOnce;
 
-  if (loaded.tool_bootstrap_project) {
+  // Override only when tests inject custom impl. In normal runtime,
+  // keep toolPackage.runtime.run from discovery loader unchanged.
+  if (deps?.runBootstrapProjectImpl && loaded.tool_bootstrap_project) {
     loaded.tool_bootstrap_project = withRunOverride(loaded.tool_bootstrap_project, async (input, ctx) => {
       try {
-        const result = await runBootstrap({
+        const result = await deps.runBootstrapProjectImpl!({
           specPath: input.specPath,
           outDir: input.outDir,
           apply: input.apply,
@@ -93,10 +82,10 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_verify_project) {
+  if (deps?.runVerifyProjectImpl && loaded.tool_verify_project) {
     loaded.tool_verify_project = withRunOverride(loaded.tool_verify_project, async (input, ctx) => {
       try {
-        const result = await runVerify({
+        const result = await deps.runVerifyProjectImpl!({
           projectRoot: input.projectRoot,
           verifyLevel: input.verifyLevel,
           runCmdImpl: ctx.runCmdImpl
@@ -122,21 +111,17 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_design_contract) {
+  if (deps?.runDesignContractImpl && loaded.tool_design_contract) {
     loaded.tool_design_contract = withRunOverride(loaded.tool_design_contract, async (input, ctx) => {
       try {
-        const result = await runDesign({
+        const result = await deps.runDesignContractImpl!({
           goal: input.goal,
           specPath: input.specPath,
           rawSpec: input.rawSpec,
           projectRoot: input.projectRoot,
           provider: ctx.provider
         });
-        return {
-          ok: true,
-          data: { contract: result.contract, attempts: result.attempts },
-          meta: { touchedPaths: [] }
-        };
+        return { ok: true, data: { contract: result.contract, attempts: result.attempts }, meta: { touchedPaths: [] } };
       } catch (error) {
         return {
           ok: false,
@@ -146,10 +131,10 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_materialize_contract) {
+  if (deps?.runMaterializeContractImpl && loaded.tool_materialize_contract) {
     loaded.tool_materialize_contract = withRunOverride(loaded.tool_materialize_contract, async (input) => {
       try {
-        const result = await runMaterialize({
+        const result = await deps.runMaterializeContractImpl!({
           contract: input.contract,
           outDir: input.outDir,
           appDir: input.appDir,
@@ -179,21 +164,17 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_design_ux) {
+  if (deps?.runDesignUxImpl && loaded.tool_design_ux) {
     loaded.tool_design_ux = withRunOverride(loaded.tool_design_ux, async (input, ctx) => {
       try {
-        const result = await runDesignUxImpl({
+        const result = await deps.runDesignUxImpl!({
           goal: input.goal,
           specPath: input.specPath,
           contract: input.contract,
           projectRoot: input.projectRoot,
           provider: ctx.provider
         });
-        return {
-          ok: true,
-          data: { ux: result.ux, attempts: result.attempts },
-          meta: { touchedPaths: [] }
-        };
+        return { ok: true, data: { ux: result.ux, attempts: result.attempts }, meta: { touchedPaths: [] } };
       } catch (error) {
         return {
           ok: false,
@@ -203,21 +184,11 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_materialize_ux) {
+  if (deps?.runMaterializeUxImpl && loaded.tool_materialize_ux) {
     loaded.tool_materialize_ux = withRunOverride(loaded.tool_materialize_ux, async (input) => {
       try {
-        const result = await runMaterializeUxImpl({
-          ux: input.ux,
-          projectRoot: input.projectRoot,
-          apply: input.apply
-        });
-        return {
-          ok: true,
-          data: result,
-          meta: {
-            touchedPaths: [result.uxPath, `${input.projectRoot}/src/lib/design/ux.ts`]
-          }
-        };
+        const result = await deps.runMaterializeUxImpl!({ ux: input.ux, projectRoot: input.projectRoot, apply: input.apply });
+        return { ok: true, data: result, meta: { touchedPaths: [result.uxPath, `${input.projectRoot}/src/lib/design/ux.ts`] } };
       } catch (error) {
         return {
           ok: false,
@@ -227,21 +198,17 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_design_implementation) {
+  if (deps?.runDesignImplementationImpl && loaded.tool_design_implementation) {
     loaded.tool_design_implementation = withRunOverride(loaded.tool_design_implementation, async (input, ctx) => {
       try {
-        const result = await runDesignImplementationImpl({
+        const result = await deps.runDesignImplementationImpl!({
           goal: input.goal,
           contract: input.contract,
           ux: input.ux,
           projectRoot: input.projectRoot,
           provider: ctx.provider
         });
-        return {
-          ok: true,
-          data: { impl: result.impl, attempts: result.attempts },
-          meta: { touchedPaths: [] }
-        };
+        return { ok: true, data: { impl: result.impl, attempts: result.attempts }, meta: { touchedPaths: [] } };
       } catch (error) {
         return {
           ok: false,
@@ -254,10 +221,10 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_materialize_implementation) {
+  if (deps?.runMaterializeImplementationImpl && loaded.tool_materialize_implementation) {
     loaded.tool_materialize_implementation = withRunOverride(loaded.tool_materialize_implementation, async (input) => {
       try {
-        const result = await runMaterializeImplementationImpl({
+        const result = await deps.runMaterializeImplementationImpl!({
           impl: input.impl,
           projectRoot: input.projectRoot,
           apply: input.apply
@@ -265,9 +232,7 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
         return {
           ok: true,
           data: result,
-          meta: {
-            touchedPaths: [result.implPath, `${input.projectRoot}/src/lib/design/implementation.ts`]
-          }
+          meta: { touchedPaths: [result.implPath, `${input.projectRoot}/src/lib/design/implementation.ts`] }
         };
       } catch (error) {
         return {
@@ -281,20 +246,16 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_design_delivery) {
+  if (deps?.runDesignDeliveryImpl && loaded.tool_design_delivery) {
     loaded.tool_design_delivery = withRunOverride(loaded.tool_design_delivery, async (input, ctx) => {
       try {
-        const result = await runDesignDeliveryImpl({
+        const result = await deps.runDesignDeliveryImpl!({
           goal: input.goal,
           contract: input.contract,
           projectRoot: input.projectRoot,
           provider: ctx.provider
         });
-        return {
-          ok: true,
-          data: { delivery: result.delivery, attempts: result.attempts },
-          meta: { touchedPaths: [] }
-        };
+        return { ok: true, data: { delivery: result.delivery, attempts: result.attempts }, meta: { touchedPaths: [] } };
       } catch (error) {
         return {
           ok: false,
@@ -307,10 +268,10 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_materialize_delivery) {
+  if (deps?.runMaterializeDeliveryImpl && loaded.tool_materialize_delivery) {
     loaded.tool_materialize_delivery = withRunOverride(loaded.tool_materialize_delivery, async (input) => {
       try {
-        const result = await runMaterializeDeliveryImpl({
+        const result = await deps.runMaterializeDeliveryImpl!({
           delivery: input.delivery,
           projectRoot: input.projectRoot,
           apply: input.apply
@@ -339,10 +300,10 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  if (loaded.tool_repair_once) {
+  if (deps?.repairOnceImpl && loaded.tool_repair_once) {
     loaded.tool_repair_once = withRunOverride(loaded.tool_repair_once, async (input, ctx) => {
       try {
-        const result = await runRepair({
+        const result = await deps.repairOnceImpl!({
           projectRoot: input.projectRoot,
           cmd: input.cmd,
           args: input.args,
