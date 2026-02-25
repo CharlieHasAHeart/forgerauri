@@ -5,8 +5,7 @@ import type { CmdResult } from "../../runner/runCmd.js";
 import type { AgentCmdRunner, ErrorKind, VerifyProjectResult, VerifyStepResult } from "../types.js";
 
 export const verifyProjectInputSchema = z.object({
-  projectRoot: z.string().min(1),
-  verifyLevel: z.enum(["basic", "full"]).default("basic")
+  projectRoot: z.string().min(1)
 });
 
 const truncate = (value: string, max = 60000): string => (value.length > max ? `${value.slice(0, max)}...<truncated>` : value);
@@ -54,18 +53,13 @@ const toStep = (name: VerifyStepResult["name"], result: CmdResult, skipped = fal
 
 const okSkipped = (): CmdResult => ({ ok: true, code: 0, stdout: "skipped", stderr: "" });
 
-const remainingSteps = (verifyLevel: "basic" | "full", done: VerifyStepResult["name"][]): VerifyStepResult[] => {
-  const ordered: VerifyStepResult["name"][] =
-    verifyLevel === "full"
-      ? ["install", "install_retry", "build", "build_retry", "cargo_check", "tauri_check", "tauri_build"]
-      : ["install", "install_retry", "build", "build_retry", "cargo_check", "tauri_check"];
-
+const remainingSteps = (done: VerifyStepResult["name"][]): VerifyStepResult[] => {
+  const ordered: VerifyStepResult["name"][] = ["install", "install_retry", "build", "build_retry", "cargo_check", "tauri_check", "tauri_build"];
   return ordered.filter((step) => !done.includes(step)).map((step) => toStep(step, okSkipped(), true));
 };
 
 export const runVerifyProject = async (args: {
   projectRoot: string;
-  verifyLevel: "basic" | "full";
   runCmdImpl: AgentCmdRunner;
 }): Promise<VerifyProjectResult> => {
   const steps: VerifyStepResult[] = [];
@@ -78,7 +72,7 @@ export const runVerifyProject = async (args: {
 
   const fail = (stepName: VerifyStepResult["name"], stderr: string, summary: string): VerifyProjectResult => {
     const kind = classifyError(stepName, stderr);
-    const filled = [...steps, ...remainingSteps(args.verifyLevel, done)];
+    const filled = [...steps, ...remainingSteps(done)];
     return {
       ok: false,
       step: stepName,
@@ -137,21 +131,17 @@ export const runVerifyProject = async (args: {
     push(tauriCheckStep);
     if (!tauriCheckStep.ok) return fail("tauri_check", tauriCheckStep.stderr, "verify failed at tauri_check");
 
-    if (args.verifyLevel === "full") {
-      const tauriBuild = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "tauri", "build"], args.projectRoot);
-      const tauriBuildStep = toStep("tauri_build", tauriBuild);
-      push(tauriBuildStep);
-      if (!tauriBuildStep.ok) return fail("tauri_build", tauriBuildStep.stderr, "verify failed at tauri_build");
-    }
+    const tauriBuild = await args.runCmdImpl("pnpm", ["-C", args.projectRoot, "tauri", "build"], args.projectRoot);
+    const tauriBuildStep = toStep("tauri_build", tauriBuild);
+    push(tauriBuildStep);
+    if (!tauriBuildStep.ok) return fail("tauri_build", tauriBuildStep.stderr, "verify failed at tauri_build");
   } else {
     push(toStep("cargo_check", okSkipped(), true));
     push(toStep("tauri_check", okSkipped(), true));
-    if (args.verifyLevel === "full") {
-      push(toStep("tauri_build", okSkipped(), true));
-    }
+    push(toStep("tauri_build", okSkipped(), true));
   }
 
-  const filled = [...steps, ...remainingSteps(args.verifyLevel, done)];
+  const filled = [...steps, ...remainingSteps(done)];
   return {
     ok: true,
     step: "none",

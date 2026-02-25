@@ -86,7 +86,7 @@ const mockImpl: ImplementationDesignV1 = {
 const mockDelivery: DeliveryDesignV1 = {
   version: "v1",
   verifyPolicy: {
-    levelDefault: "basic",
+    levelDefault: "full",
     gates: ["pnpm_install_if_needed", "pnpm_build", "cargo_check", "tauri_help"]
   },
   preflight: {
@@ -172,7 +172,6 @@ describe("agent runtime", () => {
       outDir,
       apply: true,
       verify: true,
-      verifyLevel: "full",
       repair: true,
       provider,
       maxTurns: 16,
@@ -222,7 +221,7 @@ describe("agent runtime", () => {
         },
         runVerifyProjectImpl: async (input) => {
           phaseCalls.push("VERIFY");
-          expect(input.verifyLevel).toBe("full");
+          expect(input.projectRoot).toContain("agent-demo");
           return {
             ok: true,
             step: "none",

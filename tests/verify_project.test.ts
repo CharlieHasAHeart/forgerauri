@@ -26,7 +26,6 @@ describe("tool_verify_project", () => {
 
     const result = await runVerifyProject({
       projectRoot: root,
-      verifyLevel: "basic",
       runCmdImpl
     });
 
@@ -39,11 +38,12 @@ describe("tool_verify_project", () => {
       `pnpm -C ${root} install`,
       `pnpm -C ${root} build`,
       "cargo check",
-      `pnpm -C ${root} tauri --help`
+      `pnpm -C ${root} tauri --help`,
+      `pnpm -C ${root} tauri build`
     ]);
   });
 
-  test("verifyLevel=full runs tauri build after cargo check", async () => {
+  test("always runs tauri build after cargo check", async () => {
     const root = await mkdtemp(join(tmpdir(), "forgetauri-verify-"));
     await mkdir(join(root, "src-tauri"), { recursive: true });
 
@@ -55,7 +55,6 @@ describe("tool_verify_project", () => {
 
     const result = await runVerifyProject({
       projectRoot: root,
-      verifyLevel: "full",
       runCmdImpl
     });
 

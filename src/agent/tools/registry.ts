@@ -87,7 +87,6 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
       try {
         const result = await deps.runVerifyProjectImpl!({
           projectRoot: input.projectRoot,
-          verifyLevel: input.verifyLevel,
           runCmdImpl: ctx.runCmdImpl
         });
         ctx.memory.verifyResult = {

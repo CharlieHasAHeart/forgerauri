@@ -9,7 +9,7 @@ import type { DeliveryDesignV1 } from "../src/agent/design/delivery/schema.js";
 const delivery: DeliveryDesignV1 = {
   version: "v1",
   verifyPolicy: {
-    levelDefault: "basic",
+    levelDefault: "full",
     gates: ["pnpm_install_if_needed", "pnpm_build", "cargo_check", "tauri_help"],
     smokeCommands: ["lint_config"]
   },

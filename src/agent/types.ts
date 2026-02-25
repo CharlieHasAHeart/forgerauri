@@ -56,7 +56,6 @@ export type AgentState = {
     apply: boolean;
     verify: boolean;
     repair: boolean;
-    verifyLevel: "basic" | "full";
   };
   projectRoot?: string;
   appDir?: string;

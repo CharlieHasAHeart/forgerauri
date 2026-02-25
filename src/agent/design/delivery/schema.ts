@@ -3,7 +3,7 @@ import { z } from "zod";
 export const deliveryDesignV1Schema = z.object({
   version: z.literal("v1"),
   verifyPolicy: z.object({
-    levelDefault: z.enum(["basic", "full"]),
+    levelDefault: z.literal("full"),
     gates: z.array(z.enum(["pnpm_install_if_needed", "pnpm_build", "cargo_check", "tauri_help", "tauri_build"])),
     smokeCommands: z.array(z.string().min(1)).optional()
   }),

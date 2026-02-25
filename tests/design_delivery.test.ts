@@ -24,7 +24,7 @@ describe("tool_design_delivery", () => {
       JSON.stringify({
         version: "v1",
         verifyPolicy: {
-          levelDefault: "basic",
+          levelDefault: "full",
           gates: ["pnpm_install_if_needed", "pnpm_build", "cargo_check", "tauri_help"],
           smokeCommands: ["lint_config"]
         },
@@ -38,13 +38,13 @@ describe("tool_design_delivery", () => {
       {
         provider,
         runCmdImpl: async () => ({ ok: true, code: 0, stdout: "", stderr: "" }),
-        flags: { apply: true, verify: true, repair: true, maxPatchesPerTurn: 8, verifyLevel: "basic" },
+        flags: { apply: true, verify: true, repair: true, maxPatchesPerTurn: 8 },
         memory: { patchPaths: [], touchedPaths: [] }
       }
     );
 
     expect(result.ok).toBe(true);
     const data = result.data as { delivery: { verifyPolicy: { levelDefault: string } } };
-    expect(data.delivery.verifyPolicy.levelDefault).toBe("basic");
+    expect(data.delivery.verifyPolicy.levelDefault).toBe("full");
   });
 });

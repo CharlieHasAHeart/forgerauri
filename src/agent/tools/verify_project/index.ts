@@ -25,7 +25,7 @@ export const toolPackage: ToolPackage<z.infer<typeof verifyProjectInputSchema>, 
     name: "tool_verify_project",
     version: "1.0.0",
     category: "high",
-    description: "High-level verify gate with fixed order and optional full tauri build gate.",
+    description: "High-level verify gate with fixed full order ending in tauri build.",
     capabilities: ["verify", "build", "cargo", "tauri"],
     inputSchema: verifyProjectInputSchema,
     outputSchema,
@@ -39,7 +39,6 @@ export const toolPackage: ToolPackage<z.infer<typeof verifyProjectInputSchema>, 
       try {
         const result = await runVerifyProject({
           projectRoot: input.projectRoot,
-          verifyLevel: input.verifyLevel,
           runCmdImpl: ctx.runCmdImpl
         });
         ctx.memory.verifyResult = {
@@ -72,14 +71,9 @@ export const toolPackage: ToolPackage<z.infer<typeof verifyProjectInputSchema>, 
     },
     examples: [
       {
-        title: "Basic verify",
-        toolCall: { name: "tool_verify_project", input: { projectRoot: "./generated/app", verifyLevel: "basic" } },
-        expected: "Runs install/build/cargo_check/tauri_check and returns structured step results."
-      },
-      {
-        title: "Full verify",
-        toolCall: { name: "tool_verify_project", input: { projectRoot: "./generated/app", verifyLevel: "full" } },
-        expected: "Includes tauri_build gate after cargo_check."
+        title: "Project verify",
+        toolCall: { name: "tool_verify_project", input: { projectRoot: "./generated/app" } },
+        expected: "Runs install/build/cargo_check/tauri_check/tauri_build and returns structured step results."
       }
     ]
   }

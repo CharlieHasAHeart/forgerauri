@@ -8,7 +8,7 @@
  * - `pnpm dev --agent --goal "Generate and run the app, ensure DB health check works" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Improve UI: better layout, loading states, error banners" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Implement real lint_config logic and persist results" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
- * - `pnpm dev --agent --goal "Desktop-ready strict validation" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --verify-level full --repair`
+ * - `pnpm dev --agent --goal "Desktop-ready strict validation" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  *
  * DashScope env:
  * - `export DASHSCOPE_API_KEY=...`
@@ -47,7 +47,6 @@ type CliOptions = {
   applySpecified: boolean;
   verify: boolean;
   verifySpecified: boolean;
-  verifyLevel: "basic" | "full";
   repair: boolean;
   repairSpecified: boolean;
   maxTurns: number;
@@ -72,7 +71,6 @@ const parseArgs = (argv: string[]): CliOptions => {
   let applySpecified = false;
   let verify = false;
   let verifySpecified = false;
-  let verifyLevel: "basic" | "full" = "basic";
   let repair = false;
   let repairSpecified = false;
   let maxTurns = 8;
@@ -100,12 +98,6 @@ const parseArgs = (argv: string[]): CliOptions => {
       const raw = Number(argv[i + 1]);
       const parsed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 8;
       maxTurns = Math.max(1, parsed);
-      i += 1;
-      continue;
-    }
-    if (arg === "--verify-level") {
-      const raw = (argv[i + 1] ?? "basic").toLowerCase();
-      verifyLevel = raw === "full" ? "full" : "basic";
       i += 1;
       continue;
     }
@@ -155,7 +147,6 @@ const parseArgs = (argv: string[]): CliOptions => {
     applySpecified,
     verify,
     verifySpecified,
-    verifyLevel,
     repair,
     repairSpecified,
     maxTurns,
@@ -195,7 +186,7 @@ const printPlan = (plan: Plan): void => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--verify-level basic|full] [--repair] [--max-turns N] [--max-patches N]");
+  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--max-turns N] [--max-patches N]");
   console.error("- Optional basic scaffold: pnpm dev -- <spec.json> --out <dir> --plan|--apply");
 };
 
@@ -218,7 +209,6 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     apply: finalApply,
     verify: finalVerify,
     repair: finalRepair,
-    verifyLevel: options.verifyLevel,
     maxTurns: options.maxTurns,
     maxPatches: options.maxPatches
   });

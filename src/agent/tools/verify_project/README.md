@@ -1,36 +1,33 @@
 # tool_verify_project
 
 ## What it does
-Runs project verification gates in fixed order and returns structured step results.
+Runs fixed verification gates for a generated Tauri project in deterministic order.
 
 ## When to use
 - When phase == VERIFY
-- After bootstrap/apply and after each repair attempt
+- Before REPAIR decision
 
 ## Inputs
-- `projectRoot` (string): generated app root
-- `verifyLevel` ("basic"|"full")
+- `projectRoot` (string)
 
 ## Outputs
+Returns `VerifyProjectResult`:
 - `ok`
-- `step` (failed step name or `none`)
-- `results` (all gate steps)
+- `step`
+- `results`
+- `summary`
 - `classifiedError`
-- `summary` and `suggestion`
+- `suggestion`
 
 ## Side effects
 - Executes commands (`pnpm`, `cargo`, `tauri`)
 
 ## Examples
-Basic verify:
-{"name":"tool_verify_project","input":{"projectRoot":"./generated/app","verifyLevel":"basic"}}
-
-Full verify:
-{"name":"tool_verify_project","input":{"projectRoot":"./generated/app","verifyLevel":"full"}}
+{"name":"tool_verify_project","input":{"projectRoot":"./generated/app"}}
 
 ## Failure handling
-- If `ok=false`, use `step` and `classifiedError` to choose minimal repair command
+- If `ok=false`, use `step` + `classifiedError` to decide repair action
 
 ## Constraints / safety
-- Does not write files
-- Respects command allowlist through runtime command runner
+- Runs full gate sequence: install(if needed) -> build -> cargo check -> tauri --help -> tauri build
+- No direct file writes

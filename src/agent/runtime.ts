@@ -68,7 +68,6 @@ export const runAgent = async (args: {
   apply: boolean;
   verify: boolean;
   repair: boolean;
-  verifyLevel?: "basic" | "full";
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
   maxPatches?: number;
@@ -95,8 +94,7 @@ export const runAgent = async (args: {
     flags: {
       apply: args.apply,
       verify: args.verify,
-      repair: args.repair,
-      verifyLevel: args.verifyLevel ?? "basic"
+      repair: args.repair
     },
     usedLLM: false,
     verifyHistory: [],
@@ -120,8 +118,7 @@ export const runAgent = async (args: {
       apply: state.flags.apply,
       verify: state.flags.verify,
       repair: state.flags.repair,
-      maxPatchesPerTurn: maxPatches,
-      verifyLevel: state.flags.verifyLevel
+      maxPatchesPerTurn: maxPatches
     },
     memory: {
       specPath: state.specPath,
@@ -251,7 +248,7 @@ export const runAgent = async (args: {
           }
         ];
       } else if (state.phase === "VERIFY" && state.appDir) {
-        toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir, verifyLevel: state.flags.verifyLevel } }];
+        toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir } }];
       } else if (state.phase === "REPAIR") {
         const repairCmd = inferRepairCommand(state);
         if (repairCmd) {
@@ -266,7 +263,7 @@ export const runAgent = async (args: {
             },
             {
               name: "tool_verify_project",
-              input: { projectRoot: state.appDir, verifyLevel: state.flags.verifyLevel }
+              input: { projectRoot: state.appDir }
             }
           ];
         }
