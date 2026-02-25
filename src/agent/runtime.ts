@@ -1,4 +1,4 @@
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { AgentAuditCollector } from "./audit.js";
 import { proposeNextActions } from "./brain.js";
 import { createToolRegistry, loadToolRegistryWithDocs } from "./tools/registry.js";
@@ -162,7 +162,7 @@ export const runAgent = async (args: {
             input: {
               contract: state.contract,
               outDir: state.outDir,
-              appNameHint: state.appDir ? basename(state.appDir) : undefined,
+              appDir: state.appDir,
               apply: state.flags.apply
             }
           }

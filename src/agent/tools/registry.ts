@@ -118,6 +118,7 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
         const result = await runMaterialize({
           contract: input.contract,
           outDir: input.outDir,
+          appDir: input.appDir,
           appNameHint: input.appNameHint,
           apply: input.apply
         });

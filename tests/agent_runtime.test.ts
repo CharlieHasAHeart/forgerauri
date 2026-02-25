@@ -113,8 +113,9 @@ describe("agent runtime", () => {
           phaseCalls.push("DESIGN");
           return { contract: mockContract, attempts: 1, raw: "{}" };
         },
-        runMaterializeContractImpl: async ({ outDir: materializeOutDir }) => {
+        runMaterializeContractImpl: async ({ outDir: materializeOutDir, appDir }) => {
           phaseCalls.push("MATERIALIZE");
+          expect(appDir).toBe(join(materializeOutDir, "agent-demo"));
           return {
             appDir: join(materializeOutDir, "agent-demo"),
             contractPath: join(materializeOutDir, "agent-demo", "forgetauri.contract.json"),

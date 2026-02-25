@@ -9,6 +9,7 @@ import type { ToolPackage } from "../types.js";
 const inputSchema = z.object({
   contract: contractDesignV1Schema,
   outDir: z.string().min(1),
+  appDir: z.string().min(1).optional(),
   appNameHint: z.string().optional(),
   apply: z.boolean().default(true)
 });
@@ -85,11 +86,12 @@ const writeIfChanged = async (path: string, content: string, apply: boolean): Pr
 export const runMaterializeContract = async (args: {
   contract: ContractDesignV1;
   outDir: string;
+  appDir?: string;
   appNameHint?: string;
   apply: boolean;
 }): Promise<z.infer<typeof outputSchema>> => {
   const appName = args.appNameHint && args.appNameHint.trim().length > 0 ? args.appNameHint : args.contract.app.name;
-  const appDir = join(resolve(args.outDir), toAppSlug(appName));
+  const appDir = args.appDir ? resolve(args.appDir) : join(resolve(args.outDir), toAppSlug(appName));
 
   const contractJsonPath = join(appDir, "forgetauri.contract.json");
   const contractClientPath = join(appDir, "src/lib/contract/contract.json");
@@ -136,6 +138,7 @@ export const toolPackage: ToolPackage<z.infer<typeof inputSchema>, z.infer<typeo
         const data = await runMaterializeContract({
           contract: input.contract,
           outDir: input.outDir,
+          appDir: input.appDir,
           appNameHint: input.appNameHint,
           apply: input.apply
         });

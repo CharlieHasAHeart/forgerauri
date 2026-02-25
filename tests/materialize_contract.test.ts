@@ -68,4 +68,19 @@ describe("tool_materialize_contract", () => {
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS \"lint_runs\"");
     expect(sql).toContain("CREATE INDEX IF NOT EXISTS \"idx_lint_runs_file_path\"");
   });
+
+  test("appDir takes precedence over outDir/appNameHint", async () => {
+    const outDir = await mkdtemp(join(tmpdir(), "forgetauri-contract-"));
+    const explicitAppDir = join(outDir, "fixed-app-dir");
+    const result = await runMaterializeContract({
+      contract: minimalContract,
+      outDir,
+      appDir: explicitAppDir,
+      appNameHint: "some-other-name",
+      apply: false
+    });
+
+    expect(result.appDir).toBe(explicitAppDir);
+    expect(result.contractPath).toBe(join(explicitAppDir, "forgetauri.contract.json"));
+  });
 });
