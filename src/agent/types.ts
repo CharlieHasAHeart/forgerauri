@@ -14,6 +14,7 @@ export type AgentPhase =
   | "MATERIALIZE_IMPL"
   | "DESIGN_DELIVERY"
   | "MATERIALIZE_DELIVERY"
+  | "VALIDATE_DESIGN"
   | "CODEGEN_FROM_DESIGN"
   | "VERIFY"
   | "REPAIR"
@@ -68,6 +69,11 @@ export type AgentState = {
   implPath?: string;
   delivery?: DeliveryDesignV1;
   deliveryPath?: string;
+  designValidation?: {
+    ok: boolean;
+    errorsCount: number;
+    summary: string;
+  };
   codegenSummary?: {
     generatedFilesCount: number;
     wrote: number;

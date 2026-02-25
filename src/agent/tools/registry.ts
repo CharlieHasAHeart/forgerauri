@@ -10,6 +10,7 @@ import { runMaterializeContract } from "./materialize_contract/index.js";
 import { runMaterializeDelivery } from "./materialize_delivery/index.js";
 import { runMaterializeImplementation } from "./materialize_implementation/index.js";
 import { runMaterializeUx } from "./materialize_ux/index.js";
+import { runValidateDesign } from "./validate_design/index.js";
 import { runVerifyProject } from "./verifyProject.js";
 import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
 import { wrapToolRunWithOutputValidation } from "./util.js";
@@ -24,6 +25,7 @@ export type ToolRegistryDeps = {
   runMaterializeImplementationImpl?: typeof runMaterializeImplementation;
   runDesignDeliveryImpl?: typeof runDesignDelivery;
   runMaterializeDeliveryImpl?: typeof runMaterializeDelivery;
+  runValidateDesignImpl?: typeof runValidateDesign;
   runCodegenFromDesignImpl?: typeof runCodegenFromDesign;
   runVerifyProjectImpl?: typeof runVerifyProject;
   repairOnceImpl?: typeof repairOnce;
@@ -282,6 +284,29 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
           error: {
             code: "MATERIALIZE_DELIVERY_FAILED",
             message: error instanceof Error ? error.message : "delivery materialization failed"
+          }
+        };
+      }
+    });
+  }
+
+  if (deps?.runValidateDesignImpl && loaded.tool_validate_design) {
+    loaded.tool_validate_design = withRunOverride(loaded.tool_validate_design, async (input) => {
+      try {
+        const result = await deps.runValidateDesignImpl!({
+          projectRoot: input.projectRoot,
+          contract: input.contract,
+          ux: input.ux,
+          implementation: input.implementation,
+          delivery: input.delivery
+        });
+        return { ok: true, data: result, meta: { touchedPaths: [] } };
+      } catch (error) {
+        return {
+          ok: false,
+          error: {
+            code: "VALIDATE_DESIGN_FAILED",
+            message: error instanceof Error ? error.message : "design validation failed"
           }
         };
       }

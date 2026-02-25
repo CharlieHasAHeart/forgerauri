@@ -146,6 +146,11 @@ describe("agent runtime", () => {
           deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
           summary: { wrote: 0, skipped: 4 }
         }),
+        runValidateDesignImpl: async () => ({
+          ok: true,
+          errors: [],
+          summary: "Design validation passed"
+        }),
         runCodegenFromDesignImpl: async () => ({
           ok: true,
           generated: ["src/lib/api/generated/contract.ts"],
@@ -224,6 +229,14 @@ describe("agent runtime", () => {
           phaseCalls.push("MATERIALIZE_DELIVERY");
           return { deliveryPath: join(projectRoot, "src/lib/design/delivery.json"), summary: { wrote: 0, skipped: 4 } };
         },
+        runValidateDesignImpl: async () => {
+          phaseCalls.push("VALIDATE_DESIGN");
+          return {
+            ok: true,
+            errors: [],
+            summary: "Design validation passed"
+          };
+        },
         runCodegenFromDesignImpl: async ({ projectRoot }) => {
           phaseCalls.push("CODEGEN_FROM_DESIGN");
           expect(projectRoot).toContain("agent-demo");
@@ -260,6 +273,7 @@ describe("agent runtime", () => {
       "MATERIALIZE_IMPL",
       "DESIGN_DELIVERY",
       "MATERIALIZE_DELIVERY",
+      "VALIDATE_DESIGN",
       "CODEGEN_FROM_DESIGN",
       "VERIFY"
     ]);
@@ -267,6 +281,7 @@ describe("agent runtime", () => {
     expect(result.state.uxPath).toContain("ux.json");
     expect(result.state.implPath).toContain("implementation.json");
     expect(result.state.deliveryPath).toContain("delivery.json");
+    expect(result.state.designValidation?.ok).toBe(true);
     expect(result.state.codegenSummary?.generatedFilesCount).toBe(2);
   });
 
@@ -324,6 +339,11 @@ describe("agent runtime", () => {
         runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
           deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
           summary: { wrote: 0, skipped: 4 }
+        }),
+        runValidateDesignImpl: async () => ({
+          ok: true,
+          errors: [],
+          summary: "Design validation passed"
         }),
         runCodegenFromDesignImpl: async () => ({
           ok: true,
@@ -385,6 +405,11 @@ describe("agent runtime", () => {
         runMaterializeDeliveryImpl: async ({ projectRoot }) => ({
           deliveryPath: join(projectRoot, "src/lib/design/delivery.json"),
           summary: { wrote: 0, skipped: 4 }
+        }),
+        runValidateDesignImpl: async () => ({
+          ok: true,
+          errors: [],
+          summary: "Design validation passed"
         }),
         runCodegenFromDesignImpl: async () => ({
           ok: true,

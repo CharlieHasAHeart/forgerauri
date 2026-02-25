@@ -22,6 +22,7 @@ const summarizeState = (state: AgentState): unknown => ({
   uxPath: state.uxPath,
   implPath: state.implPath,
   deliveryPath: state.deliveryPath,
+  designValidation: state.designValidation,
   codegenSummary: state.codegenSummary,
   counts: {
     contractCommands: state.contract?.commands.length ?? 0,
@@ -251,6 +252,15 @@ export const runAgent = async (args: {
             }
           }
         ];
+      } else if (state.phase === "VALIDATE_DESIGN") {
+        toolCalls = [
+          {
+            name: "tool_validate_design",
+            input: {
+              projectRoot: requiredInput(state.appDir, "validate design phase missing appDir")
+            }
+          }
+        ];
       } else if (state.phase === "CODEGEN_FROM_DESIGN") {
         toolCalls = [
           {
@@ -410,7 +420,29 @@ export const runAgent = async (args: {
       if (call.name === "tool_materialize_delivery" && result.ok) {
         const data = result.data as { deliveryPath: string };
         state.deliveryPath = data.deliveryPath;
-        state.phase = state.flags.verify ? "CODEGEN_FROM_DESIGN" : "DONE";
+        state.phase = "VALIDATE_DESIGN";
+      }
+
+      if (call.name === "tool_validate_design" && result.ok) {
+        const data = result.data as { ok: boolean; errors: Array<{ code: string; message: string; path?: string }>; summary: string };
+        state.designValidation = {
+          ok: data.ok,
+          errorsCount: data.errors.length,
+          summary: data.summary
+        };
+        if (!data.ok) {
+          const preview = data.errors
+            .slice(0, 3)
+            .map((error) => `${error.code}${error.path ? `@${error.path}` : ""}: ${error.message}`)
+            .join(" | ");
+          state.lastError = {
+            kind: "Config",
+            message: `${data.summary}${preview ? ` | ${preview}` : ""}`
+          };
+          state.phase = "FAILED";
+        } else {
+          state.phase = "CODEGEN_FROM_DESIGN";
+        }
       }
 
       if (call.name === "tool_codegen_from_design" && result.ok) {
