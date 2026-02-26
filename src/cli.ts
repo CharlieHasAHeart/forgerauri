@@ -1,10 +1,6 @@
 /**
  * Run examples:
- * - `pnpm dev -- ./spec.json`
- * - `pnpm dev -- --spec ./spec.json`
- * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --plan`
- * - `pnpm dev -- /mnt/data/NaturalIntelligence__fast-xml-parser.json --out ./generated --apply`
- * - `pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
+ * - `pnpm dev --agent --goal "Generate and run the app" --spec ./spec.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Generate and run the app, ensure DB health check works" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Improve UI: better layout, loading states, error banners" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
  * - `pnpm dev --agent --goal "Implement real lint_config logic and persist results" --spec /mnt/data/agent-sh__agnix.json --out ./generated --apply --verify --repair`
@@ -15,28 +11,13 @@
  * - `export DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1`
  * - `export DASHSCOPE_MODEL=qwen3-max-2026-01-23`
  *
- * LLM enrich is mandatory in current pipeline:
- * - `DASHSCOPE_API_KEY=... pnpm dev -- /mnt/data/agent-sh__agnix.json --out ./generated --apply`
- *
- * After scaffold generation:
- * - `cd <outDir>/<app-slug>`
- * - `pnpm install`
- * - `pnpm tauri dev`
- * - In the app window, switch Screens navigation and use action Run to execute lint_config/apply_fixes.
- * - Then run list_lint_runs/list_fix_runs from action command selector to verify DB history increases.
+ * Agent mode is the only supported external workflow.
  */
-import { readFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import process from "node:process";
 import { ZodError } from "zod";
 import { loadEnvFile } from "./config/loadEnv.js";
-import { applyPlan } from "./generator/apply.js";
-import { generateScaffold } from "./generator/scaffold/index.js";
-import type { Plan, PlanActionType } from "./generator/types.js";
 import { runAgent } from "./agent/runtime.js";
-import { getProviderFromEnv } from "./llm/index.js";
-import { enrichWireSpecWithLLM } from "./spec/enrichWithLLM.js";
-import { loadSpec, parseSpecFromRaw } from "./spec/loadSpec.js";
 
 type CliOptions = {
   specPath?: string;
@@ -162,40 +143,9 @@ const parseArgs = (argv: string[]): CliOptions => {
   };
 };
 
-const summarizePlan = (plan: Plan): Record<PlanActionType, number> => {
-  const counts: Record<PlanActionType, number> = { CREATE: 0, OVERWRITE: 0, SKIP: 0, PATCH: 0 };
-  plan.actions.forEach((action) => {
-    counts[action.type] += 1;
-  });
-  return counts;
-};
-
-const printPlan = (plan: Plan): void => {
-  const sorted = [...plan.actions].sort((left, right) => left.path.localeCompare(right.path));
-  console.log(`Plan for: ${plan.appDir}`);
-  sorted.forEach((action) => {
-    console.log(`${action.type.padEnd(9)} ${action.path} (${action.reason})`);
-  });
-
-  const counts = summarizePlan(plan);
-  console.log(
-    `Plan summary: create=${counts.CREATE}, overwrite=${counts.OVERWRITE}, patch=${counts.PATCH}, skip=${counts.SKIP}`
-  );
-
-  const patchTargets = sorted.filter((action) => action.type === "PATCH");
-  if (patchTargets.length > 0) {
-    console.log("Patch targets:");
-    patchTargets.forEach((action) => {
-      console.log(`- ${action.path}`);
-    });
-    console.log("Manual merge required for user-zone files.");
-  }
-};
-
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- Recommended: pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N]");
-  console.error("- Optional basic scaffold: pnpm dev -- <spec.json> --out <dir> --plan|--apply");
+  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N]");
 };
 
 const runAgentMode = async (options: CliOptions): Promise<void> => {
@@ -252,58 +202,17 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
   process.exitCode = result.ok ? 0 : 1;
 };
 
-const runGenerate = async (options: CliOptions): Promise<void> => {
-  if (!options.specPath) {
-    usage();
-    process.exitCode = 1;
-    return;
-  }
-
-  await loadSpec(options.specPath);
-  const rawText = await readFile(options.specPath, "utf8");
-  const rawJson = JSON.parse(rawText) as unknown;
-  const provider = getProviderFromEnv();
-  const enriched = await enrichWireSpecWithLLM({ wire: rawJson, provider });
-  const ir = parseSpecFromRaw(enriched.wireEnriched);
-  console.log(`Spec enrich: used=${enriched.used}`);
-
-  console.log("Validation summary: OK");
-
-  if (!options.outDir) {
-    console.log(JSON.stringify(ir, null, 2));
-    return;
-  }
-
-  const plan = await generateScaffold(ir, options.outDir);
-  if (options.plan || !options.apply) {
-    printPlan(plan);
-  }
-
-  const applied = await applyPlan(plan, { apply: options.apply });
-  if (options.apply) {
-    const counts = summarizePlan(plan);
-    console.log(`Apply summary: wrote=${counts.CREATE + counts.OVERWRITE}, skipped=${counts.SKIP}, patched=${counts.PATCH}`);
-    if (applied.patchFiles.length > 0) {
-      console.log("Patch files:");
-      applied.patchFiles.forEach((patchPath) => console.log(`- ${patchPath}`));
-      console.log("Manual merge required for user-zone files listed in patch files.");
-    }
-  } else {
-    console.log("Apply summary: dry-run (no files written). Use --apply to write files.");
-  }
-};
-
 const main = async (): Promise<void> => {
   loadEnvFile();
   const options = parseArgs(process.argv.slice(2));
 
   try {
-    if (options.agent) {
-      await runAgentMode(options);
+    if (!options.agent) {
+      usage();
+      process.exitCode = 1;
       return;
     }
-
-    await runGenerate(options);
+    await runAgentMode(options);
   } catch (error) {
     if (error instanceof ZodError) {
       printValidationErrors(error);
