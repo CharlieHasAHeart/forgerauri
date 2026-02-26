@@ -34,6 +34,7 @@ type CliOptions = {
   autoApprove: boolean;
   maxTurns: number;
   maxPatches: number;
+  mode: "plan" | "phase";
   truncation: "auto" | "disabled";
   compactionThreshold?: number;
 };
@@ -61,6 +62,7 @@ const parseArgs = (argv: string[]): CliOptions => {
   let autoApprove = false;
   let maxTurns = 8;
   let maxPatches = 6;
+  let mode: "plan" | "phase" = "plan";
   let truncation: "auto" | "disabled" = "auto";
   let compactionThreshold: number | undefined;
 
@@ -93,6 +95,11 @@ const parseArgs = (argv: string[]): CliOptions => {
       const raw = Number(argv[i + 1]);
       const parsed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 6;
       maxPatches = Math.min(8, parsed);
+      i += 1;
+      continue;
+    }
+    if (arg === "--agent-mode") {
+      mode = argv[i + 1] === "phase" ? "phase" : "plan";
       i += 1;
       continue;
     }
@@ -158,6 +165,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     autoApprove,
     maxTurns,
     maxPatches,
+    mode,
     truncation,
     compactionThreshold
   };
@@ -165,7 +173,7 @@ const parseArgs = (argv: string[]): CliOptions => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
+  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--agent-mode plan|phase] [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
 };
 
 const runAgentMode = async (options: CliOptions): Promise<void> => {
@@ -206,6 +214,7 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     repair: finalRepair,
     maxTurns: options.maxTurns,
     maxPatches: options.maxPatches,
+    mode: options.mode,
     truncation: options.truncation,
     compactionThreshold: options.compactionThreshold,
     humanReview

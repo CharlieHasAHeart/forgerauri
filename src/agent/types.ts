@@ -3,6 +3,7 @@ import type { ContractDesignV1 } from "./design/contract/schema.js";
 import type { DeliveryDesignV1 } from "./design/delivery/schema.js";
 import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
 import type { UXDesignV1 } from "./design/ux/schema.js";
+import type { PlanChangeDecision, PlanChangeRequestV1, PlanV1 } from "./plan/schema.js";
 
 export type AgentPhase =
   | "BOOT"
@@ -58,6 +59,7 @@ export type AgentState = {
     apply: boolean;
     verify: boolean;
     repair: boolean;
+    mode: "phase" | "plan";
     truncation: "auto" | "disabled";
     compactionThreshold?: number;
   };
@@ -97,6 +99,15 @@ export type AgentState = {
   touchedFiles: string[];
   toolCalls: Array<{ name: string; input: unknown }>;
   toolResults: Array<{ name: string; ok: boolean; note?: string }>;
+  planVersion?: number;
+  currentTaskId?: string;
+  completedTasks?: string[];
+  planData?: PlanV1;
+  planHistory?: Array<
+    | { type: "initial"; version: number; plan: PlanV1 }
+    | { type: "change_request"; request: PlanChangeRequestV1 }
+    | { type: "change_decision"; decision: PlanChangeDecision }
+  >;
 };
 
 export type BootstrapProjectResult = {
