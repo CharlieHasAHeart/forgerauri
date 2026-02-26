@@ -98,7 +98,7 @@ const minimalTauriConf = (): TauriConf => ({
     ]
   },
   bundle: {
-    active: false,
+    active: true,
     targets: "all",
     icon: ["icons/icon.png"]
   }
@@ -154,10 +154,6 @@ const normalizeConfDefaults = (conf: TauriConf): { normalized: TauriConf; change
   next.app = app;
 
   const bundle = typeof next.bundle === "object" && next.bundle !== null ? (next.bundle as Record<string, unknown>) : {};
-  if (typeof bundle.active !== "boolean") {
-    bundle.active = false;
-    changed = true;
-  }
   if (typeof bundle.targets !== "string") {
     bundle.targets = "all";
     changed = true;
