@@ -1,15 +1,33 @@
 import { z } from "zod";
 
-export type LlmMessage = { role: "system" | "user" | "assistant"; content: string };
+export type LlmMessage = { role: "system" | "developer" | "user" | "assistant"; content: string };
 
 export type LlmCallOptions = {
   model?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  instructions?: string;
+  previousResponseId?: string;
+  store?: boolean;
+  truncation?: "auto" | "disabled" | (string & {});
+  include?: string[];
+  metadata?: Record<string, string>;
+  promptCacheKey?: string;
+  safetyIdentifier?: string;
+  textFormat?: unknown;
+};
+
+export type LlmResponse = {
+  text: string;
+  responseId?: string;
+  output?: unknown[];
+  raw: unknown;
+  usage?: unknown;
 };
 
 export interface LlmProvider {
   name: string;
+  complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse>;
   completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string>;
   completeJSON<T>(
     messages: LlmMessage[],
@@ -43,7 +61,12 @@ const summarizeZodError = (error: z.ZodError): string =>
 
 export abstract class BaseLlmProvider implements LlmProvider {
   abstract name: string;
-  abstract completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string>;
+  abstract complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse>;
+
+  async completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string> {
+    const response = await this.complete(messages, opts);
+    return response.text;
+  }
 
   async completeJSON<T>(
     messages: LlmMessage[],

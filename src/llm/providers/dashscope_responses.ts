@@ -1,4 +1,5 @@
-import { BaseLlmProvider, type LlmCallOptions, type LlmMessage } from "../provider.js";
+import { parseResponsesOutput } from "../responses/parse.js";
+import { BaseLlmProvider, type LlmCallOptions, type LlmMessage, type LlmResponse } from "../provider.js";
 
 const defaultModel = (): string => process.env.DASHSCOPE_MODEL || "qwen3-max-2026-01-23";
 const baseUrl = (): string =>
@@ -10,35 +11,10 @@ const toPrompt = (messages: LlmMessage[]): string =>
     .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
     .join("\n\n");
 
-const extractOutputText = (response: unknown): string => {
-  const res = response as Record<string, unknown>;
-
-  const direct = res.output_text;
-  if (typeof direct === "string") return direct;
-
-  const output = res.output;
-  if (Array.isArray(output)) {
-    const chunks: string[] = [];
-    for (const item of output) {
-      const itemObj = item as Record<string, unknown>;
-      const content = itemObj.content;
-      if (!Array.isArray(content)) continue;
-      for (const c of content) {
-        const cObj = c as Record<string, unknown>;
-        const text = cObj.text;
-        if (typeof text === "string") chunks.push(text);
-      }
-    }
-    if (chunks.length > 0) return chunks.join("\n");
-  }
-
-  return JSON.stringify(response);
-};
-
 export class DashScopeResponsesProvider extends BaseLlmProvider {
   name = "dashscope_responses";
 
-  async completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string> {
+  async complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse> {
     const key = process.env.DASHSCOPE_API_KEY;
     if (!key) {
       throw new Error("DASHSCOPE_API_KEY is required for DashScope Responses provider");
@@ -65,7 +41,17 @@ export class DashScopeResponsesProvider extends BaseLlmProvider {
       throw new Error(`DashScope Responses API error ${response.status}: ${text}`);
     }
 
-    const json = (await response.json()) as unknown;
-    return extractOutputText(json);
+    const raw = (await response.json()) as unknown;
+    const parsed = parseResponsesOutput(raw);
+    const rawObj = raw as Record<string, unknown>;
+    const direct = typeof rawObj.output_text === "string" ? rawObj.output_text : "";
+
+    return {
+      text: parsed.text || direct || JSON.stringify(raw),
+      responseId: typeof rawObj.id === "string" ? rawObj.id : undefined,
+      output: parsed.output,
+      usage: rawObj.usage,
+      raw
+    };
   }
 }

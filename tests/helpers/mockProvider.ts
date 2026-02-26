@@ -1,4 +1,4 @@
-import { BaseLlmProvider, type LlmCallOptions, type LlmMessage } from "../../src/llm/provider.js";
+import { BaseLlmProvider, type LlmCallOptions, type LlmMessage, type LlmResponse } from "../../src/llm/provider.js";
 
 export class MockProvider extends BaseLlmProvider {
   name = "mock";
@@ -9,10 +9,15 @@ export class MockProvider extends BaseLlmProvider {
     this.outputs = [...outputs];
   }
 
-  async completeText(_messages: LlmMessage[], _opts?: LlmCallOptions): Promise<string> {
+  async complete(_messages: LlmMessage[], _opts?: LlmCallOptions): Promise<LlmResponse> {
     if (this.outputs.length === 0) {
       throw new Error("MockProvider outputs exhausted");
     }
-    return this.outputs.shift() as string;
+    const text = this.outputs.shift() as string;
+    return {
+      text,
+      raw: { output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }] },
+      output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }]
+    };
   }
 }
