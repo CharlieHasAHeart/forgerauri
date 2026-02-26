@@ -104,19 +104,23 @@ export const proposeNextActions = async (args: {
   let raw = "";
   let responseId: string | undefined;
   let usage: unknown;
+  let previousResponseIdForAttempt = args.previousResponseId;
+  let previousResponseIdSent: string | undefined;
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    previousResponseIdSent = previousResponseIdForAttempt;
     const llmResponse = await args.provider.complete(messages, {
       temperature: 0,
       maxOutputTokens: 3000,
       instructions,
-      previousResponseId: args.previousResponseId,
+      previousResponseId: previousResponseIdForAttempt,
       truncation: args.truncation,
       contextManagement: args.contextManagement
     });
     raw = llmResponse.text;
     responseId = llmResponse.responseId;
     usage = llmResponse.usage;
+    previousResponseIdForAttempt = llmResponse.responseId ?? previousResponseIdForAttempt;
 
     try {
       const parsed = proposedSchema.parse(JSON.parse(extractJsonObject(raw)) as unknown);
@@ -128,7 +132,7 @@ export const proposeNextActions = async (args: {
           raw,
           responseId,
           usage,
-          previousResponseIdSent: args.previousResponseId
+          previousResponseIdSent
         };
       }
 

@@ -83,7 +83,7 @@ export const parseResponsesOutput = (raw: unknown): ParsedResponsesOutput => {
   }
 
   return {
-    text: acc.textChunks.join("\n").trim(),
+    text: acc.textChunks.join("").trim(),
     refusals: acc.refusals,
     functionCalls: acc.functionCalls,
     output
