@@ -5,6 +5,7 @@ export type LlmMessage = { role: "system" | "developer" | "user" | "assistant"; 
 export type LlmCallOptions = {
   model?: string;
   temperature?: number;
+  topP?: number;
   maxOutputTokens?: number;
   instructions?: string;
   previousResponseId?: string;
@@ -15,6 +16,7 @@ export type LlmCallOptions = {
   promptCacheKey?: string;
   safetyIdentifier?: string;
   contextManagement?: Array<{ type: "compaction"; compactThreshold?: number }>;
+  enableThinking?: boolean;
   textFormat?:
     | { type: "json_schema"; name: string; schema: unknown; strict?: boolean; description?: string }
     | { type: "json_object" }

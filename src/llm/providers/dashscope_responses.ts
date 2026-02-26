@@ -1,31 +1,53 @@
-import { parseResponsesOutput } from "../responses/parse.js";
+import { DashScopeAdapter } from "../adapters/dashscope.js";
+import type { AgentRequestIR } from "../adapters/ir.js";
 import { BaseLlmProvider, type LlmCallOptions, type LlmMessage, type LlmResponse } from "../provider.js";
 
 const defaultModel = (): string => process.env.DASHSCOPE_MODEL || "qwen3-max-2026-01-23";
 const baseUrl = (): string =>
-  (process.env.DASHSCOPE_BASE_URL ||
-    "https://dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1").replace(/\/$/, "");
+  (process.env.DASHSCOPE_BASE_URL || "https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1").replace(/\/$/, "");
 
-const toPrompt = (messages: LlmMessage[]): string =>
-  messages
-    .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
-    .join("\n\n");
+const toMetadata = (value: LlmCallOptions["metadata"]): AgentRequestIR["metadata"] => {
+  if (!value || typeof value !== "object") return undefined;
+  const out: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      out[k] = v;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
+const toTruncation = (value: LlmCallOptions["truncation"]): AgentRequestIR["truncation"] =>
+  value === "auto" || value === "disabled" ? (value as "auto" | "disabled") : undefined;
+
+const toIR = (messages: LlmMessage[], opts?: LlmCallOptions): AgentRequestIR => ({
+  messages,
+  instructions: opts?.instructions,
+  previousResponseId: opts?.previousResponseId,
+  model: opts?.model || defaultModel(),
+  temperature: opts?.temperature,
+  topP: opts?.topP,
+  maxOutputTokens: opts?.maxOutputTokens,
+  store: opts?.store,
+  truncation: toTruncation(opts?.truncation),
+  include: opts?.include,
+  metadata: toMetadata(opts?.metadata),
+  promptCacheKey: opts?.promptCacheKey,
+  safetyIdentifier: opts?.safetyIdentifier,
+  contextManagement: opts?.contextManagement,
+  textFormat: opts?.textFormat,
+  enableThinking: opts?.enableThinking
+});
 
 export class DashScopeResponsesProvider extends BaseLlmProvider {
   name = "dashscope_responses";
+  private readonly adapter = new DashScopeAdapter();
 
-  async complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse> {
+  private async request(body: Record<string, unknown>): Promise<unknown> {
     const key = process.env.DASHSCOPE_API_KEY;
     if (!key) {
       throw new Error("DASHSCOPE_API_KEY is required for DashScope Responses provider");
     }
-
-    const body = {
-      model: opts?.model || defaultModel(),
-      input: toPrompt(messages),
-      temperature: opts?.temperature ?? 0,
-      max_output_tokens: opts?.maxOutputTokens ?? 4096
-    };
 
     const response = await fetch(`${baseUrl()}/responses`, {
       method: "POST",
@@ -41,17 +63,21 @@ export class DashScopeResponsesProvider extends BaseLlmProvider {
       throw new Error(`DashScope Responses API error ${response.status}: ${text}`);
     }
 
-    const raw = (await response.json()) as unknown;
-    const parsed = parseResponsesOutput(raw);
-    const rawObj = raw as Record<string, unknown>;
-    const direct = typeof rawObj.output_text === "string" ? rawObj.output_text : "";
+    return (await response.json()) as unknown;
+  }
+
+  async complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse> {
+    const ir = toIR(messages, opts);
+    const body = this.adapter.toRequestBody(ir);
+    const raw = await this.request(body);
+    const parsed = this.adapter.fromRawResponse(raw);
 
     return {
-      text: parsed.text || direct || JSON.stringify(raw),
-      responseId: typeof rawObj.id === "string" ? rawObj.id : undefined,
+      text: parsed.text,
+      responseId: parsed.responseId,
       output: parsed.output,
-      usage: rawObj.usage,
-      raw
+      raw: parsed.raw,
+      usage: parsed.usage
     };
   }
 }
