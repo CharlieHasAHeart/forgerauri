@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runMaterializeImplementation } from "../src/agent/tools/materialize_implementation/index.js";
+import { runMaterializeImplementation } from "../src/agent/tools/core/materialize_implementation/index.js";
 import type { ImplementationDesignV1 } from "../src/agent/design/implementation/schema.js";
 
 const impl: ImplementationDesignV1 = {

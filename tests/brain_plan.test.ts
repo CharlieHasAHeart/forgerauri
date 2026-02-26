@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { proposePlan } from "../src/agent/brain.js";
-import { defaultAgentPolicy } from "../src/agent/policy.js";
+import { proposePlan } from "../src/agent/planning/planner.js";
+import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
 import { createToolRegistry } from "../src/agent/tools/registry.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 

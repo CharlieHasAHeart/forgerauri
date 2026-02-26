@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runRepairKnownIssues } from "../src/agent/tools/repair_known_issues/index.js";
+import { runRepairKnownIssues } from "../src/agent/tools/core/repair_known_issues/index.js";
 
 const writeJson = async (path: string, value: unknown): Promise<void> => {
   await mkdir(dirname(path), { recursive: true });

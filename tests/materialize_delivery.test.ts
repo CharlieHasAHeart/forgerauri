@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runMaterializeDelivery } from "../src/agent/tools/materialize_delivery/index.js";
+import { runMaterializeDelivery } from "../src/agent/tools/core/materialize_delivery/index.js";
 import type { DeliveryDesignV1 } from "../src/agent/design/delivery/schema.js";
 
 const delivery: DeliveryDesignV1 = {

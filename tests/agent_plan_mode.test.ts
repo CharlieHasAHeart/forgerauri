@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
-import { runAgent } from "../src/agent/runtime.js";
+import { runAgent } from "../src/agent/index.js";
 import type { ToolSpec } from "../src/agent/tools/types.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 

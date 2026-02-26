@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { evaluatePlanChange } from "../src/agent/plan/gate.js";
-import { defaultAgentPolicy } from "../src/agent/policy.js";
+import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
 import { planChangeRequestV2Schema } from "../src/agent/plan/schema.js";
 
 const baseRequest = () =>

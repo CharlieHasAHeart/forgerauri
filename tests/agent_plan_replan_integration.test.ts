@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
-import { runAgent } from "../src/agent/runtime.js";
-import { defaultAgentPolicy } from "../src/agent/policy.js";
+import { runAgent } from "../src/agent/index.js";
+import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
 import type { ToolSpec } from "../src/agent/tools/types.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
@@ -201,7 +201,12 @@ describe("agent plan replan integration (stub toolchain)", () => {
 
     const firstNoopIndex = executed.findIndex((item) => item.name === "tool_noop");
     const writeAIndex = executed.findIndex((item) => item.name === "tool_write_file" && item.detail === "a.txt");
-    const writeBIndex = executed.findLastIndex((item) => item.name === "tool_write_file" && item.detail === "b.txt");
+    const writeBIndex =
+      executed.length -
+      1 -
+      [...executed]
+        .reverse()
+        .findIndex((item) => item.name === "tool_write_file" && item.detail === "b.txt");
     expect(writeAIndex).toBeGreaterThan(-1);
     expect(firstNoopIndex).toBeGreaterThan(writeAIndex);
     expect(writeBIndex).toBeGreaterThan(firstNoopIndex);

@@ -18,8 +18,8 @@ import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { ZodError } from "zod";
 import { loadEnvFile } from "./config/loadEnv.js";
-import { runAgent } from "./agent/runtime.js";
-import type { AgentPolicy } from "./agent/policy.js";
+import { runAgent } from "./agent/index.js";
+import type { AgentPolicy } from "./agent/index.js";
 
 type CliOptions = {
   specPath?: string;

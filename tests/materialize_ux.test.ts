@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runMaterializeUx } from "../src/agent/tools/materialize_ux/index.js";
+import { runMaterializeUx } from "../src/agent/tools/core/materialize_ux/index.js";
 import type { UXDesignV1 } from "../src/agent/design/ux/schema.js";
 
 const ux: UXDesignV1 = {

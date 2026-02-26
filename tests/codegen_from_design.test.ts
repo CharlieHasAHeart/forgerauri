@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runCodegenFromDesign, toolPackage } from "../src/agent/tools/codegen_from_design/index.js";
+import { runCodegenFromDesign, toolPackage } from "../src/agent/tools/core/codegen_from_design/index.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
 const minimalContract = {

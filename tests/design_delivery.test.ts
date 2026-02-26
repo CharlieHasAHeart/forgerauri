@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { toolPackage } from "../src/agent/tools/design_delivery/index.js";
+import { toolPackage } from "../src/agent/tools/core/design_delivery/index.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 import type { ContractDesignV1 } from "../src/agent/design/contract/schema.js";
 

@@ -80,11 +80,21 @@ const normalizePackage = async (toolDir: string, toolPkg: ToolPackage): Promise<
 
 export const loadToolPackages = async (baseDir?: string): Promise<Record<string, ToolSpec>> => {
   const toolsRoot = baseDir ?? dirname(fileURLToPath(import.meta.url));
-  const entries = await readdir(toolsRoot, { withFileTypes: true });
-  const toolDirs = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => join(toolsRoot, entry.name))
-    .sort((a, b) => a.localeCompare(b));
+  const roots = [join(toolsRoot, "checks"), join(toolsRoot, "core"), toolsRoot];
+  const collected = new Set<string>();
+  for (const root of roots) {
+    try {
+      const entries = await readdir(root, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dir = join(root, entry.name);
+        collected.add(dir);
+      }
+    } catch {
+      // ignore missing roots
+    }
+  }
+  const toolDirs = Array.from(collected).sort((a, b) => a.localeCompare(b));
 
   const tools: ToolSpec[] = [];
 

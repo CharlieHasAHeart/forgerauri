@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runValidateDesign, toolPackage } from "../src/agent/tools/validate_design/index.js";
+import { runValidateDesign, toolPackage } from "../src/agent/tools/core/validate_design/index.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
 const baseContract = {

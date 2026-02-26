@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { toolPackage } from "../src/agent/tools/design_contract/index.js";
+import { toolPackage } from "../src/agent/tools/core/design_contract/index.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
 describe("tool_design_contract", () => {
