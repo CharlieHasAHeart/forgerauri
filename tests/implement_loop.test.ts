@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { implementOnce } from "../src/implement/implementLoop.js";
+import { implementOnce } from "../src/agent/workflows/implement/implementLoop.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
 const writeSpec = async (root: string): Promise<string> => {
