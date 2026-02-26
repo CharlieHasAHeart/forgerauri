@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { AgentAuditCollector } from "./audit.js";
+import { AgentTurnAuditCollector } from "../runtime/audit/index.js";
 import { proposeNextActions } from "./brain.js";
 import { createToolRegistry, loadToolRegistryWithDocs } from "./tools/registry.js";
 import { buildToolDocPack } from "./tools/loader.js";
@@ -154,7 +154,7 @@ export const runAgent = async (args: {
     }
   };
 
-  const audit = new AgentAuditCollector(args.goal);
+  const audit = new AgentTurnAuditCollector(args.goal);
 
   for (let turn = 1; turn <= maxTurns; turn += 1) {
     state.budgets.usedTurns = turn;

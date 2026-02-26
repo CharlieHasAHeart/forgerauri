@@ -5,7 +5,7 @@ import { toPlanActionsFromPatches } from "../generator/patchToPlanActions.js";
 import type { Plan } from "../generator/types.js";
 import type { LlmProvider } from "../llm/provider.js";
 import { runCmd, type CmdResult } from "../runner/runCmd.js";
-import { AuditCollector } from "../runtime/audit.js";
+import { CommandRepairAuditCollector } from "../runtime/audit/index.js";
 import { assertCommandAllowed, assertCwdInside, assertPatchBudget, assertPathInside } from "../runtime/policy.js";
 import type { RuntimeResult } from "../runtime/types.js";
 import { proposeRepairsWithLLM } from "./proposeRepairsWithLLM.js";
@@ -49,7 +49,7 @@ export const repairOnce = async (args: {
   apply?: boolean;
   runImpl?: RunImpl;
 }): Promise<RuntimeResult> => {
-  const audit = new AuditCollector();
+  const audit = new CommandRepairAuditCollector();
   const run = args.runImpl ?? runCmd;
   const maxPatches = args.budget?.maxPatches ?? 5;
   const safeRun = (cmd: string, argv: string[], cwd: string): Promise<CmdResult> => {

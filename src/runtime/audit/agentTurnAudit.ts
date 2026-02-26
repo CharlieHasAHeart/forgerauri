@@ -1,7 +1,7 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-type TurnAudit = {
+export type AgentTurnAuditEntry = {
   turn: number;
   llmRaw: string;
   toolCalls: Array<{ name: string; input: unknown }>;
@@ -27,15 +27,15 @@ const nextCounter = async (dir: string): Promise<number> => {
   }
 };
 
-export class AgentAuditCollector {
+export class AgentTurnAuditCollector {
   private readonly goal: string;
-  private readonly turns: TurnAudit[] = [];
+  private readonly turns: AgentTurnAuditEntry[] = [];
 
   constructor(goal: string) {
     this.goal = goal;
   }
 
-  recordTurn(entry: TurnAudit): void {
+  recordTurn(entry: AgentTurnAuditEntry): void {
     this.turns.push({
       ...entry,
       llmRaw: truncate(entry.llmRaw),
