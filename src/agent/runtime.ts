@@ -66,6 +66,23 @@ const requiredInput = <T>(value: T | undefined, message: string): T => {
   return value;
 };
 
+const createVerifyCall = (projectRoot: string): { name: "tool_verify_project"; input: { projectRoot: string } } => ({
+  name: "tool_verify_project",
+  input: { projectRoot }
+});
+
+const createRepairOnceCall = (
+  projectRoot: string,
+  cmd: { cmd: string; args: string[] }
+): { name: "tool_repair_once"; input: { projectRoot: string; cmd: string; args: string[] } } => ({
+  name: "tool_repair_once",
+  input: {
+    projectRoot,
+    cmd: cmd.cmd,
+    args: cmd.args
+  }
+});
+
 export const runAgent = async (args: {
   goal: string;
   specPath: string;
@@ -276,7 +293,7 @@ export const runAgent = async (args: {
           }
         ];
       } else if (state.phase === "VERIFY" && state.appDir) {
-        toolCalls = [{ name: "tool_verify_project", input: { projectRoot: state.appDir } }];
+        toolCalls = [createVerifyCall(state.appDir)];
       } else if (state.phase === "REPAIR") {
         if (!state.repairKnownChecked && state.appDir) {
           toolCalls = [
@@ -290,16 +307,7 @@ export const runAgent = async (args: {
         } else {
           const repairCmd = inferRepairCommand(state);
           if (repairCmd) {
-            toolCalls = [
-              {
-                name: "tool_repair_once",
-                input: {
-                  projectRoot: state.appDir,
-                  cmd: repairCmd.cmd,
-                  args: repairCmd.args
-                }
-              }
-            ];
+            toolCalls = [createRepairOnceCall(requiredInput(state.appDir, "repair phase missing appDir"), repairCmd)];
           } else {
             state.phase = "FAILED";
             state.lastError = {
@@ -498,17 +506,36 @@ export const runAgent = async (args: {
           state.lastDeterministicFixes = data.fixes.map((fix) => fix.id);
           if (data.changed) {
             state.repairKnownChecked = false;
-            state.phase = "VERIFY";
+            if (state.appDir && !toolCalls.some((queued) => queued.name === "tool_verify_project")) {
+              toolCalls.push(createVerifyCall(state.appDir));
+            }
+            state.phase = "REPAIR";
           } else {
             state.repairKnownChecked = true;
+            const repairCmd = inferRepairCommand(state);
+            if (!repairCmd || !state.appDir) {
+              state.phase = "FAILED";
+              state.lastError = {
+                kind: "Config",
+                message: "Unable to infer repair command from verify history"
+              };
+              continue;
+            }
+            toolCalls.push(createRepairOnceCall(state.appDir, repairCmd));
             state.phase = "REPAIR";
           }
         } else {
-          state.lastError = {
-            kind: state.lastError?.kind ?? "Unknown",
-            message: result.error?.message ?? "deterministic known-issues repair failed"
-          };
           state.repairKnownChecked = true;
+          const repairCmd = inferRepairCommand(state);
+          if (!repairCmd || !state.appDir) {
+            state.lastError = {
+              kind: state.lastError?.kind ?? "Unknown",
+              message: result.error?.message ?? "deterministic known-issues repair failed"
+            };
+            state.phase = "FAILED";
+            continue;
+          }
+          toolCalls.push(createRepairOnceCall(state.appDir, repairCmd));
           state.phase = "REPAIR";
         }
       }
@@ -524,7 +551,10 @@ export const runAgent = async (args: {
           };
           state.phase = "FAILED";
         } else {
-          state.phase = "VERIFY";
+          if (state.appDir && !toolCalls.some((queued) => queued.name === "tool_verify_project")) {
+            toolCalls.push(createVerifyCall(state.appDir));
+          }
+          state.phase = "REPAIR";
         }
       }
 
