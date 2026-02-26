@@ -16,11 +16,6 @@ import type { AgentState, ErrorKind, VerifyProjectResult } from "./types.js";
 
 const truncate = (value: string, max = 4000): string => (value.length > max ? `${value.slice(0, max)}...<truncated>` : value);
 
-const PHASE_INSTRUCTIONS =
-  "You are the Brain of a coding agent. You must call tools and never fabricate results. " +
-  "Hard guardrails: user-zone files cannot be overwritten directly, only patch artifacts are allowed. " +
-  "Use tool documentation to choose calls. Return JSON only: {\"toolCalls\":[{\"name\":\"...\",\"input\":{}}],\"note\":\"optional\"}.";
-
 const PLAN_INSTRUCTIONS =
   "You are the planning brain for a coding agent. Always follow plan-first execution and produce strict JSON only.";
 
@@ -461,359 +456,6 @@ const runAgentPlanMode = async (args: {
   }
 };
 
-const runAgentPhaseMode = async (args: {
-  state: AgentState;
-  provider: LlmProvider;
-  registry: Record<string, ToolSpec<any>>;
-  toolDocs: ReturnType<typeof buildToolDocPack>;
-  ctx: ToolRunContext;
-  maxTurns: number;
-  maxToolCallsPerTurn: number;
-  audit: AgentTurnAuditCollector;
-  humanReview?: (args: { reason: string; patchPaths: string[]; phase: AgentState["phase"] }) => Promise<boolean>;
-}) => {
-  const { state, provider, registry, toolDocs, ctx, maxTurns, maxToolCallsPerTurn, audit } = args;
-  state.status = "executing";
-
-  for (let turn = 1; turn <= maxTurns; turn += 1) {
-    state.budgets.usedTurns = turn;
-
-    const proposed = await proposeNextActions({
-      goal: state.goal,
-      provider,
-      registry,
-      toolDocs,
-      stateSummary: summarizeState(state),
-      maxToolCallsPerTurn,
-      instructions: PHASE_INSTRUCTIONS,
-      previousResponseId: state.lastResponseId,
-      truncation: state.flags.truncation,
-      contextManagement:
-        typeof state.flags.compactionThreshold === "number"
-          ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
-          : undefined
-    });
-    state.lastResponseId = proposed.responseId ?? state.lastResponseId;
-
-    let toolCalls = [...proposed.toolCalls];
-
-    try {
-      if (state.phase === "BOOT") {
-        toolCalls = [
-          {
-            name: "tool_bootstrap_project",
-            input: {
-              specPath: state.specPath,
-              outDir: state.outDir,
-              apply: state.flags.apply
-            }
-          }
-        ];
-      } else if (state.phase === "DESIGN_CONTRACT") {
-        toolCalls = [{ name: "tool_design_contract", input: { goal: state.goal, specPath: state.specPath, projectRoot: state.appDir } }];
-      } else if (state.phase === "MATERIALIZE_CONTRACT") {
-        toolCalls = [
-          {
-            name: "tool_materialize_contract",
-            input: {
-              contract: requiredInput(state.contract, "materialize contract phase missing contract"),
-              outDir: state.outDir,
-              appDir: requiredInput(state.appDir, "materialize contract phase missing appDir"),
-              apply: state.flags.apply
-            }
-          }
-        ];
-      } else if (state.phase === "DESIGN_UX") {
-        toolCalls = [
-          {
-            name: "tool_design_ux",
-            input: {
-              goal: state.goal,
-              specPath: state.specPath,
-              contract: requiredInput(state.contract, "design ux phase missing contract"),
-              projectRoot: state.appDir
-            }
-          }
-        ];
-      } else if (state.phase === "MATERIALIZE_UX") {
-        toolCalls = [
-          {
-            name: "tool_materialize_ux",
-            input: {
-              ux: requiredInput(state.ux, "materialize ux phase missing ux"),
-              projectRoot: requiredInput(state.appDir, "materialize ux phase missing appDir"),
-              apply: state.flags.apply
-            }
-          }
-        ];
-      } else if (state.phase === "DESIGN_IMPL") {
-        toolCalls = [
-          {
-            name: "tool_design_implementation",
-            input: {
-              goal: state.goal,
-              contract: requiredInput(state.contract, "design implementation phase missing contract"),
-              ux: state.ux,
-              projectRoot: state.appDir
-            }
-          }
-        ];
-      } else if (state.phase === "MATERIALIZE_IMPL") {
-        toolCalls = [
-          {
-            name: "tool_materialize_implementation",
-            input: {
-              impl: requiredInput(state.impl, "materialize implementation phase missing impl"),
-              projectRoot: requiredInput(state.appDir, "materialize implementation phase missing appDir"),
-              apply: state.flags.apply
-            }
-          }
-        ];
-      } else if (state.phase === "DESIGN_DELIVERY") {
-        toolCalls = [
-          {
-            name: "tool_design_delivery",
-            input: {
-              goal: state.goal,
-              contract: requiredInput(state.contract, "design delivery phase missing contract"),
-              projectRoot: state.appDir
-            }
-          }
-        ];
-      } else if (state.phase === "MATERIALIZE_DELIVERY") {
-        toolCalls = [
-          {
-            name: "tool_materialize_delivery",
-            input: {
-              delivery: requiredInput(state.delivery, "materialize delivery phase missing delivery"),
-              projectRoot: requiredInput(state.appDir, "materialize delivery phase missing appDir"),
-              apply: state.flags.apply
-            }
-          }
-        ];
-      } else if (state.phase === "VALIDATE_DESIGN") {
-        toolCalls = [{ name: "tool_validate_design", input: { projectRoot: requiredInput(state.appDir, "validate design phase missing appDir") } }];
-      } else if (state.phase === "CODEGEN_FROM_DESIGN") {
-        toolCalls = [
-          {
-            name: "tool_codegen_from_design",
-            input: { projectRoot: requiredInput(state.appDir, "codegen phase missing appDir"), apply: state.flags.apply }
-          }
-        ];
-      } else if (state.phase === "VERIFY" && state.appDir) {
-        toolCalls = [createVerifyCall(state.appDir)];
-      } else if (state.phase === "REPAIR") {
-        if (!state.repairKnownChecked && state.appDir) {
-          toolCalls = [{ name: "tool_repair_known_issues", input: { projectRoot: state.appDir } }];
-        } else {
-          const repairCmd = inferRepairCommand(state);
-          if (repairCmd) {
-            toolCalls = [createRepairOnceCall(requiredInput(state.appDir, "repair phase missing appDir"), repairCmd)];
-          } else {
-            state.phase = "FAILED";
-            state.lastError = { kind: "Config", message: "Unable to infer repair command from verify history" };
-            toolCalls = [];
-          }
-        }
-      }
-    } catch (error) {
-      state.phase = "FAILED";
-      state.lastError = { kind: "Config", message: error instanceof Error ? error.message : "phase input missing" };
-      toolCalls = [];
-    }
-
-    state.toolCalls = toolCalls;
-    state.toolResults = [];
-
-    const turnAuditResults: Array<{ name: string; ok: boolean; error?: string; touchedPaths?: string[] }> = [];
-
-    for (const call of toolCalls) {
-      const executed = await executeToolCall({ call, registry, ctx, state, humanReview: args.humanReview });
-      state.toolResults.push(normalizeToolResults(executed.toolName, executed.ok, executed.note));
-      turnAuditResults.push({
-        name: executed.toolName,
-        ok: executed.ok,
-        error: executed.ok ? undefined : executed.note,
-        touchedPaths: executed.touchedPaths
-      });
-
-      if (state.phase === "FAILED") continue;
-
-      if (call.name === "tool_bootstrap_project" && executed.ok) {
-        const data = executed.resultData as { appDir: string; usedLLM: boolean };
-        state.appDir = data.appDir;
-        state.projectRoot = data.appDir;
-        state.usedLLM = data.usedLLM;
-        state.phase = "DESIGN_CONTRACT";
-      }
-
-      if (call.name === "tool_design_contract" && executed.ok) {
-        state.contract = (executed.resultData as { contract: AgentState["contract"] }).contract;
-        state.phase = "MATERIALIZE_CONTRACT";
-      }
-
-      if (call.name === "tool_materialize_contract" && executed.ok) {
-        const data = executed.resultData as { appDir: string; contractPath: string };
-        state.appDir = data.appDir;
-        state.projectRoot = data.appDir;
-        state.contractPath = data.contractPath;
-        state.phase = "DESIGN_UX";
-      }
-
-      if (call.name === "tool_design_ux" && executed.ok) {
-        state.ux = (executed.resultData as { ux: AgentState["ux"] }).ux;
-        state.phase = "MATERIALIZE_UX";
-      }
-
-      if (call.name === "tool_materialize_ux" && executed.ok) {
-        state.uxPath = (executed.resultData as { uxPath: string }).uxPath;
-        state.phase = "DESIGN_IMPL";
-      }
-
-      if (call.name === "tool_design_implementation" && executed.ok) {
-        state.impl = (executed.resultData as { impl: AgentState["impl"] }).impl;
-        state.phase = "MATERIALIZE_IMPL";
-      }
-
-      if (call.name === "tool_materialize_implementation" && executed.ok) {
-        state.implPath = (executed.resultData as { implPath: string }).implPath;
-        state.phase = "DESIGN_DELIVERY";
-      }
-
-      if (call.name === "tool_design_delivery" && executed.ok) {
-        state.delivery = (executed.resultData as { delivery: AgentState["delivery"] }).delivery;
-        state.phase = "MATERIALIZE_DELIVERY";
-      }
-
-      if (call.name === "tool_materialize_delivery" && executed.ok) {
-        state.deliveryPath = (executed.resultData as { deliveryPath: string }).deliveryPath;
-        state.phase = "VALIDATE_DESIGN";
-      }
-
-      if (call.name === "tool_validate_design" && executed.ok) {
-        const data = executed.resultData as { ok: boolean; errors: Array<{ code: string; message: string; path?: string }>; summary: string };
-        state.designValidation = { ok: data.ok, errorsCount: data.errors.length, summary: data.summary };
-        if (!data.ok) {
-          const preview = data.errors
-            .slice(0, 3)
-            .map((error) => `${error.code}${error.path ? `@${error.path}` : ""}: ${error.message}`)
-            .join(" | ");
-          state.lastError = { kind: "Config", message: `${data.summary}${preview ? ` | ${preview}` : ""}` };
-          state.phase = "FAILED";
-        } else {
-          state.phase = "CODEGEN_FROM_DESIGN";
-        }
-      }
-
-      if (call.name === "tool_codegen_from_design" && executed.ok) {
-        const data = executed.resultData as { generated: string[]; summary: { wrote: number; skipped: number } };
-        state.codegenSummary = { generatedFilesCount: data.generated.length, wrote: data.summary.wrote, skipped: data.summary.skipped };
-        state.phase = state.flags.verify ? "VERIFY" : "DONE";
-      }
-
-      if (call.name === "tool_verify_project") {
-        const verifyData = executed.resultData as VerifyProjectResult;
-        state.verifyHistory.push(verifyData);
-
-        if (verifyData.ok) {
-          state.phase = "DONE";
-          state.lastError = undefined;
-        } else {
-          state.lastError = {
-            kind: classifyFromVerify(verifyData),
-            message: verifyData.summary,
-            command: inferRepairCommand(state) ?? undefined
-          };
-          state.repairKnownChecked = false;
-          state.lastDeterministicFixes = [];
-          state.phase = state.flags.repair ? "REPAIR" : "FAILED";
-        }
-      }
-
-      if (call.name === "tool_repair_known_issues") {
-        if (executed.ok) {
-          const data = executed.resultData as { changed: boolean; fixes: Array<{ id: string }> };
-          state.lastDeterministicFixes = data.fixes.map((fix) => fix.id);
-          if (data.changed) {
-            state.repairKnownChecked = false;
-            if (state.appDir && !toolCalls.some((queued) => queued.name === "tool_verify_project")) {
-              toolCalls.push(createVerifyCall(state.appDir));
-            }
-            state.phase = "REPAIR";
-          } else {
-            state.repairKnownChecked = true;
-            const repairCmd = inferRepairCommand(state);
-            if (!repairCmd || !state.appDir) {
-              state.phase = "FAILED";
-              state.lastError = { kind: "Config", message: "Unable to infer repair command from verify history" };
-              continue;
-            }
-            toolCalls.push(createRepairOnceCall(state.appDir, repairCmd));
-            state.phase = "REPAIR";
-          }
-        } else {
-          state.repairKnownChecked = true;
-          const repairCmd = inferRepairCommand(state);
-          if (!repairCmd || !state.appDir) {
-            state.lastError = { kind: state.lastError?.kind ?? "Unknown", message: "deterministic known-issues repair failed" };
-            state.phase = "FAILED";
-            continue;
-          }
-          toolCalls.push(createRepairOnceCall(state.appDir, repairCmd));
-          state.phase = "REPAIR";
-        }
-      }
-
-      if (call.name === "tool_repair_once") {
-        state.budgets.usedRepairs += 1;
-        state.budgets.usedPatches = state.budgets.usedRepairs;
-        state.repairKnownChecked = false;
-        if (!executed.ok) {
-          state.lastError = {
-            kind: state.lastError?.kind ?? "Unknown",
-            message: state.lastError?.message ?? executed.note ?? "repair failed"
-          };
-          state.phase = "FAILED";
-        } else {
-          if (state.appDir && !toolCalls.some((queued) => queued.name === "tool_verify_project")) {
-            toolCalls.push(createVerifyCall(state.appDir));
-          }
-          state.phase = "REPAIR";
-        }
-      }
-
-      if (!executed.ok && call.name !== "tool_verify_project" && call.name !== "tool_repair_once" && call.name !== "tool_repair_known_issues") {
-        state.lastError = { kind: "Unknown", message: executed.note ?? "tool failed" };
-        state.phase = "FAILED";
-      }
-
-      if (state.budgets.usedRepairs > state.budgets.maxPatches) {
-        state.phase = "FAILED";
-        state.lastError = { kind: "Config", message: `Repair budget exceeded: ${state.budgets.usedRepairs} > ${state.budgets.maxPatches}` };
-      }
-    }
-
-    audit.recordTurn({
-      turn,
-      llmRaw: proposed.raw,
-      llmPreviousResponseId: proposed.previousResponseIdSent,
-      llmResponseId: proposed.responseId,
-      llmUsage: proposed.usage,
-      note: proposed.reasoning,
-      toolCalls,
-      toolResults: turnAuditResults
-    });
-
-    if (state.phase === "DONE" || state.phase === "FAILED") break;
-  }
-
-  if (state.phase !== "DONE" && state.phase !== "FAILED") {
-    state.phase = "FAILED";
-    state.lastError = state.lastError ?? { kind: "Unknown", message: "max turns reached" };
-  }
-  state.status = state.phase === "DONE" ? "done" : "failed";
-};
-
 export const runAgent = async (args: {
   goal: string;
   specPath: string;
@@ -821,7 +463,6 @@ export const runAgent = async (args: {
   apply: boolean;
   verify: boolean;
   repair: boolean;
-  mode?: "phase" | "plan";
   policy?: AgentPolicy;
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
@@ -841,7 +482,6 @@ export const runAgent = async (args: {
   const maxPatches = args.maxPatches ?? 8;
   const truncation = args.truncation ?? "auto";
   const compactionThreshold = args.compactionThreshold;
-  const mode = args.mode ?? "plan";
 
   const discovered = args.registry ? null : await loadToolRegistryWithDocs(args.registryDeps);
   const registry = args.registry ?? discovered?.registry ?? (await createToolRegistry(args.registryDeps));
@@ -865,11 +505,10 @@ export const runAgent = async (args: {
       apply: args.apply,
       verify: args.verify,
       repair: args.repair,
-      mode,
       truncation,
       compactionThreshold
     },
-    status: mode === "plan" ? "planning" : undefined,
+    status: "planning",
     usedLLM: false,
     verifyHistory: [],
     budgets: {
@@ -908,32 +547,18 @@ export const runAgent = async (args: {
 
   const audit = new AgentTurnAuditCollector(args.goal);
 
-  if (mode === "phase") {
-    await runAgentPhaseMode({
-      state,
-      provider,
-      registry,
-      toolDocs,
-      ctx,
-      maxTurns,
-      maxToolCallsPerTurn,
-      audit,
-      humanReview: args.humanReview
-    });
-  } else {
-    await runAgentPlanMode({
-      state,
-      provider,
-      registry,
-      toolDocs,
-      ctx,
-      maxTurns,
-      maxToolCallsPerTurn,
-      audit,
-      policy,
-      humanReview: args.humanReview
-    });
-  }
+  await runAgentPlanMode({
+    state,
+    provider,
+    registry,
+    toolDocs,
+    ctx,
+    maxTurns,
+    maxToolCallsPerTurn,
+    audit,
+    policy,
+    humanReview: args.humanReview
+  });
 
   const base = state.appDir ?? state.outDir;
   const auditPath = await audit.flush(base, {
@@ -944,7 +569,6 @@ export const runAgent = async (args: {
     touchedFiles: state.touchedFiles.slice(-200),
     budgets: state.budgets,
     lastError: state.lastError,
-    mode: state.flags.mode,
     status: state.status,
     policy,
     toolIndex: renderToolIndex(registry)

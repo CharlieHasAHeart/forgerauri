@@ -108,7 +108,6 @@ describe("agent plan mode", () => {
     };
 
     const result = await runAgent({
-      mode: "plan",
       goal: "create marker",
       specPath,
       outDir,
@@ -165,7 +164,6 @@ describe("agent plan mode", () => {
     ]);
 
     const result = await runAgent({
-      mode: "plan",
       goal: "failing task",
       specPath,
       outDir,

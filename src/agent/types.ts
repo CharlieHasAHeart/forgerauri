@@ -60,7 +60,6 @@ export type AgentState = {
     apply: boolean;
     verify: boolean;
     repair: boolean;
-    mode: "phase" | "plan";
     truncation: "auto" | "disabled";
     compactionThreshold?: number;
   };
