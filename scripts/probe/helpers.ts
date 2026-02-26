@@ -12,7 +12,21 @@ export type PostResponsesResult = {
   error?: string;
 };
 
+export type ProbeStatus = "supported" | "ignored" | "rejected" | "flaky" | "unknown";
+
+export type ParsedOutput = {
+  text: string;
+  itemTypes: string[];
+  contentTypes: string[];
+  refusals: string[];
+  functionCalls: Array<{ name: string; arguments: string; call_id: string }>;
+};
+
 const truncate = (value: string, max = 500): string => (value.length > max ? `${value.slice(0, max)}...<truncated>` : value);
+
+export const sleep = async (ms: number): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+};
 
 export const redact = (value: string, apiKey?: string): string => {
   let out = value;
@@ -22,6 +36,29 @@ export const redact = (value: string, apiKey?: string): string => {
   out = out.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer ***REDACTED***");
   return truncate(out, 500);
 };
+
+export const extractUsage = (json: unknown): unknown => {
+  const root = (json ?? {}) as Record<string, unknown>;
+  return root.usage;
+};
+
+export const detectError = (result: PostResponsesResult): string | undefined => {
+  if (result.error) return truncate(result.error, 500);
+
+  const root = (result.json ?? {}) as Record<string, unknown>;
+  const err = (root.error ?? {}) as Record<string, unknown>;
+  const code = typeof err.code === "string" ? err.code : "";
+  const message = typeof err.message === "string" ? err.message : "";
+
+  if (code || message) {
+    return truncate(`${code}${code && message ? ": " : ""}${message}`, 500);
+  }
+
+  if (result.status >= 400) return truncate(result.text, 500);
+  return undefined;
+};
+
+const isRetriableStatus = (status: number): boolean => status === 429 || status >= 500 || status === 0;
 
 export const postResponses = async (args: PostResponsesArgs): Promise<PostResponsesResult> => {
   const controller = new AbortController();
@@ -62,27 +99,51 @@ export const postResponses = async (args: PostResponsesArgs): Promise<PostRespon
   }
 };
 
-export const parseOutput = (json: unknown): {
-  text: string;
-  itemTypes: string[];
-  refusals: string[];
-  functionCalls: Array<{ name: string; arguments: string; call_id: string }>;
-} => {
+export const postResponsesWithRetry = async (
+  args: PostResponsesArgs,
+  retryCount = 1
+): Promise<PostResponsesResult> => {
+  let result = await postResponses(args);
+
+  for (let i = 0; i < retryCount; i += 1) {
+    if (!isRetriableStatus(result.status)) break;
+    await sleep(i === 0 ? 500 : 1000);
+    result = await postResponses(args);
+  }
+
+  return result;
+};
+
+export const classifyAcceptability = (result: PostResponsesResult): ProbeStatus => {
+  if (result.status === 200) return "supported";
+  if (result.status === 0) return "flaky";
+
+  const snippet = detectError(result)?.toLowerCase() ?? "";
+  if (result.status >= 400 && /unknown|unsupported|invalid|unexpected|not allowed|unrecognized/.test(snippet)) {
+    return "rejected";
+  }
+
+  if (result.status >= 400) return "rejected";
+  return "unknown";
+};
+
+export const parseOutput = (json: unknown): ParsedOutput => {
   const root = (json ?? {}) as Record<string, unknown>;
   const output = Array.isArray(root.output) ? root.output : [];
 
   const textChunks: string[] = [];
   const itemTypes: string[] = [];
+  const contentTypes: string[] = [];
   const refusals: string[] = [];
   const functionCalls: Array<{ name: string; arguments: string; call_id: string }> = [];
 
-  const pushType = (type: unknown): void => {
-    if (typeof type === "string" && type.length > 0) itemTypes.push(type);
+  const pushType = (target: string[], type: unknown): void => {
+    if (typeof type === "string" && type.length > 0) target.push(type);
   };
 
   for (const item of output) {
     const obj = item as Record<string, unknown>;
-    pushType(obj.type);
+    pushType(itemTypes, obj.type);
 
     if (obj.type === "function_call") {
       const name = typeof obj.name === "string" ? obj.name : "";
@@ -105,7 +166,7 @@ export const parseOutput = (json: unknown): {
 
     for (const part of content) {
       const p = part as Record<string, unknown>;
-      pushType(p.type);
+      pushType(contentTypes, p.type);
 
       if (p.type === "output_text" && typeof p.text === "string") {
         textChunks.push(p.text);
@@ -129,9 +190,12 @@ export const parseOutput = (json: unknown): {
     }
   }
 
+  const fallback = typeof root.output_text === "string" ? root.output_text : "";
+
   return {
-    text: truncate(textChunks.join(""), 500),
+    text: truncate(textChunks.length > 0 ? textChunks.join("") : fallback, 500),
     itemTypes: Array.from(new Set(itemTypes)),
+    contentTypes: Array.from(new Set(contentTypes)),
     refusals,
     functionCalls
   };
