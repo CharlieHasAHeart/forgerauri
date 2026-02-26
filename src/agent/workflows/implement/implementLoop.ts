@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { applyPlan } from "../../../generator/apply.js";
@@ -10,6 +10,7 @@ import type { LlmProvider } from "../../../llm/provider.js";
 import { repairOnce } from "../repair/repairLoop.js";
 import { runCmd, type CmdResult } from "../../../runner/runCmd.js";
 import { loadSpec } from "../../../spec/loadSpec.js";
+import { ImplementAuditCollector } from "../../../runtime/audit/index.js";
 import { buildImplementPrompt } from "./prompt.js";
 import { snapshotProject } from "./snapshot.js";
 import type { ImplementRequest, ImplementResult, PatchFile } from "./types.js";
@@ -91,31 +92,6 @@ const runVerify = async (
   };
 };
 
-const nextAuditCounter = async (logsDir: string): Promise<number> => {
-  try {
-    const files = await readdir(logsDir);
-    const nums = files
-      .map((name) => {
-        const m = name.match(/^(\d+)\.json$/);
-        return m ? Number(m[1]) : -1;
-      })
-      .filter((num) => num >= 0);
-    if (nums.length === 0) return 1;
-    return Math.max(...nums) + 1;
-  } catch {
-    return 1;
-  }
-};
-
-const writeAudit = async (projectRoot: string, payload: unknown): Promise<string> => {
-  const logsDir = join(projectRoot, "generated/llm_logs");
-  await mkdir(logsDir, { recursive: true });
-  const next = await nextAuditCounter(logsDir);
-  const filePath = join(logsDir, `${String(next).padStart(4, "0")}.json`);
-  await writeFile(filePath, JSON.stringify(payload, null, 2), "utf8");
-  return filePath;
-};
-
 export const implementOnce = async (
   args: ImplementRequest & {
     apply: boolean;
@@ -131,6 +107,7 @@ export const implementOnce = async (
 
   const provider = args.provider ?? getProviderFromEnv();
   const runImpl = args.runImpl ?? runCmd;
+  const audit = new ImplementAuditCollector();
 
   const projectRoot = resolve(args.projectRoot);
   const ir = await loadSpec(args.specPath);
@@ -189,7 +166,7 @@ export const implementOnce = async (
   }
 
   const actionSummary = actions.map((action) => ({ type: action.type, path: action.path, reason: action.reason }));
-  await writeAudit(projectRoot, {
+  await audit.write(projectRoot, {
     kind: "implement_once",
     target: args.target,
     modelProvider: provider.name,

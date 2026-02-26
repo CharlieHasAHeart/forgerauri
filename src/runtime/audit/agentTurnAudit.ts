@@ -1,5 +1,6 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { nextJsonCounter } from "./counter.js";
 
 export type AgentTurnAuditEntry = {
   turn: number;
@@ -10,22 +11,6 @@ export type AgentTurnAuditEntry = {
 };
 
 const truncate = (value: string, max = 60000): string => (value.length > max ? `${value.slice(0, max)}...<truncated>` : value);
-
-const nextCounter = async (dir: string): Promise<number> => {
-  try {
-    const files = await readdir(dir);
-    const numbers = files
-      .map((name) => {
-        const m = name.match(/^(\d+)\.json$/);
-        return m ? Number(m[1]) : -1;
-      })
-      .filter((num) => num >= 0);
-    if (numbers.length === 0) return 1;
-    return Math.max(...numbers) + 1;
-  } catch {
-    return 1;
-  }
-};
 
 export class AgentTurnAuditCollector {
   private readonly goal: string;
@@ -50,7 +35,7 @@ export class AgentTurnAuditCollector {
   async flush(baseRoot: string, final: unknown): Promise<string> {
     const dir = join(baseRoot, "generated/agent_logs");
     await mkdir(dir, { recursive: true });
-    const counter = await nextCounter(dir);
+    const counter = await nextJsonCounter(dir);
     const path = join(dir, `${String(counter).padStart(4, "0")}.json`);
 
     const payload = {
