@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { MockProvider } from "./helpers/mockProvider.js";
-import { repairOnce } from "../src/repair/repairLoop.js";
+import { repairOnce } from "../src/agent/workflows/repair/repairLoop.js";
 
 describe("repair loop", () => {
   test("generated file overwrite and user file patch", async () => {
