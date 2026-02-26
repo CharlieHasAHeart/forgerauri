@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { LlmProvider } from "../llm/provider.js";
-import type { PlanChangeRequestV1, PlanV1 } from "./plan/schema.js";
-import { planChangeRequestV1Schema, planV1Schema } from "./plan/schema.js";
+import type { AgentPolicy } from "./policy.js";
+import type { PlanChangeRequestV2, PlanV1, TaskActionPlanV1 } from "./plan/schema.js";
+import { planChangeRequestV2Schema, planV1Schema, taskActionPlanV1Schema } from "./plan/schema.js";
 import type { ToolDocPack, ToolSpec } from "./tools/types.js";
 
 type Proposed = {
@@ -168,12 +169,8 @@ export const proposePlan = async (args: {
   provider: LlmProvider;
   registry: Record<string, ToolSpec>;
   stateSummary: unknown;
-  constraints: {
-    maxSteps: number;
-    maxToolCallsPerTurn: number;
-    acceptanceLocked: boolean;
-    techStackLocked: boolean;
-  };
+  policy: AgentPolicy;
+  maxToolCallsPerTurn: number;
   previousResponseId?: string;
   instructions?: string;
   truncation?: "auto" | "disabled";
@@ -205,19 +202,22 @@ export const proposePlan = async (args: {
         content:
           `Create PlanV1 for this goal:\n${args.goal}\n\n` +
           `Tech stack constraints (locked unless user allows):\n${JSON.stringify(
-            {
-              tauri: "v2",
-              frontend: "Svelte + TypeScript",
-              backend: "Rust + rusqlite",
-              acceptance_locked: args.constraints.acceptanceLocked,
-              tech_stack_locked: args.constraints.techStackLocked
-            },
+            args.policy,
             null,
             2
           )}\n\n` +
           `Tool index:\n${toolIndex}\n\n` +
           `Repo state summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
-          `Planning constraints:\n${JSON.stringify(args.constraints, null, 2)}\n` +
+          `Planning constraints:\n${JSON.stringify(
+            {
+              maxSteps: args.policy.budgets.max_steps,
+              maxToolCallsPerTurn: args.maxToolCallsPerTurn,
+              acceptanceLocked: args.policy.acceptance.locked,
+              techStackLocked: args.policy.tech_stack_locked
+            },
+            null,
+            2
+          )}\n` +
           "Every task must include success_criteria with machine-checkable command/file checks."
       }
     ]
@@ -236,6 +236,7 @@ export const proposePlanChange = async (args: {
   provider: LlmProvider;
   goal: string;
   currentPlan: PlanV1;
+  policy: AgentPolicy;
   stateSummary: unknown;
   failureEvidence: string[];
   previousResponseId?: string;
@@ -243,7 +244,7 @@ export const proposePlanChange = async (args: {
   truncation?: "auto" | "disabled";
   contextManagement?: Array<{ type: "compaction"; compactThreshold?: number }>;
 }): Promise<{
-  changeRequest: PlanChangeRequestV1;
+  changeRequest: PlanChangeRequestV2;
   raw: string;
   responseId?: string;
   usage?: unknown;
@@ -255,7 +256,7 @@ export const proposePlanChange = async (args: {
 
   const result = await llmJsonWithRetry({
     provider: args.provider,
-    schema: planChangeRequestV1Schema,
+    schema: planChangeRequestV2Schema,
     instructions,
     previousResponseId: args.previousResponseId,
     truncation: args.truncation,
@@ -266,6 +267,7 @@ export const proposePlanChange = async (args: {
         content:
           `Goal:\n${args.goal}\n\n` +
           `Current plan:\n${JSON.stringify(args.currentPlan, null, 2)}\n\n` +
+          `Policy:\n${JSON.stringify(args.policy, null, 2)}\n\n` +
           `Failure evidence:\n${JSON.stringify(args.failureEvidence, null, 2)}\n\n` +
           `State summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n` +
           "Return PlanChangeRequestV1 JSON only."
@@ -275,6 +277,63 @@ export const proposePlanChange = async (args: {
 
   return {
     changeRequest: result.data,
+    raw: result.raw,
+    responseId: result.responseId,
+    usage: result.usage,
+    previousResponseIdSent: result.previousResponseIdSent
+  };
+};
+
+export const proposeTaskActionPlan = async (args: {
+  goal: string;
+  provider: LlmProvider;
+  policy: AgentPolicy;
+  task: PlanV1["tasks"][number];
+  planSummary: unknown;
+  stateSummary: unknown;
+  toolIndex: string;
+  recentFailures: string[];
+  previousResponseId?: string;
+  instructions?: string;
+  truncation?: "auto" | "disabled";
+  contextManagement?: Array<{ type: "compaction"; compactThreshold?: number }>;
+}): Promise<{
+  actionPlan: TaskActionPlanV1;
+  raw: string;
+  responseId?: string;
+  usage?: unknown;
+  previousResponseIdSent?: string;
+}> => {
+  const instructions =
+    args.instructions ??
+    "You are a task executor planner. Return strict JSON only. Propose minimal tool actions for one task.";
+
+  const result = await llmJsonWithRetry({
+    provider: args.provider,
+    schema: taskActionPlanV1Schema,
+    instructions,
+    previousResponseId: args.previousResponseId,
+    truncation: args.truncation,
+    contextManagement: args.contextManagement,
+    maxOutputTokens: 3200,
+    messages: [
+      {
+        role: "user",
+        content:
+          `Goal:\n${args.goal}\n\n` +
+          `Policy:\n${JSON.stringify(args.policy, null, 2)}\n\n` +
+          `Task:\n${JSON.stringify(args.task, null, 2)}\n\n` +
+          `Plan summary:\n${JSON.stringify(args.planSummary, null, 2)}\n\n` +
+          `State summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
+          `Recent failures:\n${JSON.stringify(args.recentFailures, null, 2)}\n\n` +
+          `Tool index:\n${args.toolIndex}\n` +
+          "Return TaskActionPlanV1 JSON only. Keep actions idempotent where possible."
+      }
+    ]
+  });
+
+  return {
+    actionPlan: result.data,
     raw: result.raw,
     responseId: result.responseId,
     usage: result.usage,

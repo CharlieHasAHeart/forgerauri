@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { proposePlan } from "../src/agent/brain.js";
+import { defaultAgentPolicy } from "../src/agent/policy.js";
 import { createToolRegistry } from "../src/agent/tools/registry.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
@@ -35,7 +36,14 @@ describe("brain plan json", () => {
       provider,
       registry,
       stateSummary: {},
-      constraints: { maxSteps: 8, maxToolCallsPerTurn: 4, acceptanceLocked: true, techStackLocked: true }
+      policy: defaultAgentPolicy({
+        maxSteps: 8,
+        maxActionsPerTask: 4,
+        maxRetriesPerTask: 2,
+        maxReplans: 2,
+        allowedTools: Object.keys(registry)
+      }),
+      maxToolCallsPerTurn: 4
     });
 
     expect(result.plan.tasks[0]?.id).toBe("t1");
@@ -68,7 +76,14 @@ describe("brain plan json", () => {
       provider,
       registry,
       stateSummary: {},
-      constraints: { maxSteps: 8, maxToolCallsPerTurn: 4, acceptanceLocked: true, techStackLocked: true }
+      policy: defaultAgentPolicy({
+        maxSteps: 8,
+        maxActionsPerTask: 4,
+        maxRetriesPerTask: 2,
+        maxReplans: 2,
+        allowedTools: Object.keys(registry)
+      }),
+      maxToolCallsPerTurn: 4
     });
 
     expect(result.plan.version).toBe("v1");

@@ -3,7 +3,7 @@ import type { ContractDesignV1 } from "./design/contract/schema.js";
 import type { DeliveryDesignV1 } from "./design/delivery/schema.js";
 import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
 import type { UXDesignV1 } from "./design/ux/schema.js";
-import type { PlanChangeDecision, PlanChangeRequestV1, PlanV1 } from "./plan/schema.js";
+import type { PlanChangeDecision, PlanChangeRequestV2, PlanV1 } from "./plan/schema.js";
 
 export type AgentPhase =
   | "BOOT"
@@ -52,6 +52,7 @@ export type AgentBudgets = {
 
 export type AgentState = {
   phase: AgentPhase;
+  status?: "planning" | "executing" | "reviewing" | "replanning" | "done" | "failed";
   goal: string;
   specPath: string;
   outDir: string;
@@ -105,7 +106,7 @@ export type AgentState = {
   planData?: PlanV1;
   planHistory?: Array<
     | { type: "initial"; version: number; plan: PlanV1 }
-    | { type: "change_request"; request: PlanChangeRequestV1 }
+    | { type: "change_request"; request: PlanChangeRequestV2 }
     | { type: "change_decision"; decision: PlanChangeDecision }
   >;
 };

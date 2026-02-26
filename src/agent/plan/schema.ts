@@ -105,6 +105,23 @@ export const planV1Schema = z
 
 export type PlanV1 = z.infer<typeof planV1Schema>;
 
+export const taskActionPlanActionSchema = z.object({
+  name: z.string().min(1),
+  input: z.unknown(),
+  on_fail: z.enum(["stop", "continue"]).optional(),
+  idempotency_key: z.string().min(1).optional()
+});
+
+export const taskActionPlanV1Schema = z.object({
+  version: z.literal("v1"),
+  task_id: z.string().min(1),
+  rationale: z.string().min(1),
+  actions: z.array(taskActionPlanActionSchema).min(1),
+  expected_artifacts: z.array(z.string().min(1)).optional()
+});
+
+export type TaskActionPlanV1 = z.infer<typeof taskActionPlanV1Schema>;
+
 export const planChangeTypeSchema = z.enum([
   "reorder_tasks",
   "add_task",
@@ -128,6 +145,69 @@ export const planChangeRequestV1Schema = z.object({
 });
 
 export type PlanChangeRequestV1 = z.infer<typeof planChangeRequestV1Schema>;
+
+const planTaskChangesSchema = planTaskSchema
+  .omit({ id: true })
+  .partial()
+  .extend({
+    success_criteria: z.array(successCriteriaSchema).optional()
+  });
+
+export const planPatchOperationSchema = z.discriminatedUnion("op", [
+  z.object({
+    op: z.literal("add_task"),
+    task: planTaskSchema,
+    after_task_id: z.string().min(1).optional()
+  }),
+  z.object({
+    op: z.literal("remove_task"),
+    task_id: z.string().min(1)
+  }),
+  z.object({
+    op: z.literal("edit_task"),
+    task_id: z.string().min(1),
+    changes: planTaskChangesSchema
+  }),
+  z.object({
+    op: z.literal("reorder"),
+    task_id: z.string().min(1),
+    after_task_id: z.string().min(1).optional()
+  }),
+  z.object({
+    op: z.literal("edit_acceptance"),
+    changes: z.unknown()
+  }),
+  z.object({
+    op: z.literal("edit_tech_stack"),
+    changes: z.unknown()
+  })
+]);
+
+export type PlanPatchOperation = z.infer<typeof planPatchOperationSchema>;
+
+export const planChangeRequestV2Schema = z.object({
+  version: z.literal("v2"),
+  reason: z.string().min(1),
+  change_type: z.enum([
+    "reorder_tasks",
+    "add_task",
+    "remove_task",
+    "edit_task",
+    "scope_reduce",
+    "scope_expand",
+    "replace_tech",
+    "relax_acceptance"
+  ]),
+  evidence: z.array(z.string()).default([]),
+  impact: z.object({
+    steps_delta: z.number().int(),
+    risk: z.string().default("unknown")
+  }),
+  requested_tools: z.array(z.string()).default([]),
+  patch: z.array(planPatchOperationSchema).default([])
+});
+
+export type PlanChangeRequestV2 = z.infer<typeof planChangeRequestV2Schema>;
 
 export const planChangeDecisionSchema = z.object({
   decision: z.enum(["approved", "denied", "needs_more_evidence"]),

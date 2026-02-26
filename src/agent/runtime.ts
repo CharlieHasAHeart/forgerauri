@@ -1,11 +1,11 @@
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { AgentTurnAuditCollector } from "../runtime/audit/index.js";
-import { proposeNextActions, proposePlan, proposePlanChange, renderToolIndex } from "./brain.js";
-import { applyPlanChange, getNextReadyTask, summarizePlan } from "./plan/helpers.js";
+import { proposeNextActions, proposePlan, proposePlanChange, proposeTaskActionPlan, renderToolIndex } from "./brain.js";
+import { getNextReadyTask, summarizePlan } from "./plan/helpers.js";
+import { applyPlanChangePatch } from "./plan/patch.js";
 import { evaluatePlanChange } from "./plan/gate.js";
 import type { PlanTask } from "./plan/schema.js";
+import { defaultAgentPolicy, type AgentPolicy } from "./policy.js";
 import { createToolRegistry, loadToolRegistryWithDocs } from "./tools/registry.js";
 import { buildToolDocPack } from "./tools/loader.js";
 import type { ToolRunContext, ToolSpec } from "./tools/types.js";
@@ -28,6 +28,7 @@ const classifyFromVerify = (result: VerifyProjectResult): ErrorKind => result.cl
 
 const summarizeState = (state: AgentState): unknown => ({
   phase: state.phase,
+  status: state.status,
   goal: state.goal,
   projectRoot: state.projectRoot,
   appDir: state.appDir,
@@ -160,14 +161,35 @@ const executeToolCall = async (args: {
   };
 };
 
-const evaluateSuccessCriteria = async (args: {
+const buildCriterionToolCall = (task: PlanTask, criterion: PlanTask["success_criteria"][number]): { name: string; input: unknown } | null => {
+  if (criterion.type === "tool_result") return null;
+  if (criterion.type === "file_exists") {
+    return { name: "tool_check_file_exists", input: { base: "appDir", path: criterion.path } };
+  }
+  if (criterion.type === "file_contains") {
+    return { name: "tool_check_file_contains", input: { base: "appDir", path: criterion.path, contains: criterion.contains } };
+  }
+  return {
+    name: "tool_check_command",
+    input: {
+      cmd: criterion.cmd,
+      args: criterion.args ?? [],
+      cwd: criterion.cwd,
+      expect_exit_code: criterion.expect_exit_code
+    }
+  };
+};
+
+const evaluateSuccessCriteriaWithTools = async (args: {
   task: PlanTask;
-  appDir?: string;
-  runCmdImpl: (cmd: string, args: string[], cwd: string) => Promise<CmdResult>;
+  registry: Record<string, ToolSpec<any>>;
+  ctx: ToolRunContext;
+  state: AgentState;
   toolResults: Array<{ name: string; ok: boolean }>;
-  outDir: string;
-}): Promise<{ ok: boolean; failures: string[] }> => {
+  humanReview?: (args: { reason: string; patchPaths: string[]; phase: AgentState["phase"] }) => Promise<boolean>;
+}): Promise<{ ok: boolean; failures: string[]; toolAudit: Array<{ name: string; ok: boolean; error?: string }> }> => {
   const failures: string[] = [];
+  const toolAudit: Array<{ name: string; ok: boolean; error?: string }> = [];
 
   for (const criterion of args.task.success_criteria) {
     if (criterion.type === "tool_result") {
@@ -178,38 +200,24 @@ const evaluateSuccessCriteria = async (args: {
       continue;
     }
 
-    if (criterion.type === "command") {
-      const cwd = criterion.cwd ? resolve(args.appDir ?? args.outDir, criterion.cwd) : args.appDir ?? args.outDir;
-      const out = await args.runCmdImpl(criterion.cmd, criterion.args ?? [], cwd);
-      if (out.code !== criterion.expect_exit_code) {
-        failures.push(`command failed: ${criterion.cmd} ${(criterion.args ?? []).join(" ")} -> ${out.code}`);
-      }
-      continue;
-    }
+    const checkCall = buildCriterionToolCall(args.task, criterion);
+    if (!checkCall) continue;
 
-    const base = args.appDir ?? args.outDir;
-    const abs = resolve(base, criterion.path);
-    if (criterion.type === "file_exists") {
-      if (!existsSync(abs)) failures.push(`file missing: ${criterion.path}`);
-      continue;
-    }
+    const executed = await executeToolCall({
+      call: checkCall,
+      registry: args.registry,
+      ctx: args.ctx,
+      state: args.state,
+      humanReview: args.humanReview
+    });
 
-    if (criterion.type === "file_contains") {
-      if (!existsSync(abs)) {
-        failures.push(`file missing for contains check: ${criterion.path}`);
-        continue;
-      }
-      const content = await readFile(abs, "utf8");
-      if (!content.includes(criterion.contains)) {
-        failures.push(`file does not contain expected text: ${criterion.path}`);
-      }
+    toolAudit.push({ name: checkCall.name, ok: executed.ok, error: executed.ok ? undefined : executed.note });
+    if (!executed.ok) {
+      failures.push(`criteria check failed: ${checkCall.name}`);
     }
   }
 
-  return {
-    ok: failures.length === 0,
-    failures
-  };
+  return { ok: failures.length === 0, failures, toolAudit };
 };
 
 const runAgentPlanMode = async (args: {
@@ -221,21 +229,19 @@ const runAgentPlanMode = async (args: {
   maxTurns: number;
   maxToolCallsPerTurn: number;
   audit: AgentTurnAuditCollector;
+  policy: AgentPolicy;
   humanReview?: (args: { reason: string; patchPaths: string[]; phase: AgentState["phase"] }) => Promise<boolean>;
 }) => {
-  const { state, provider, registry, ctx, maxTurns, maxToolCallsPerTurn, audit } = args;
+  const { state, provider, registry, ctx, maxTurns, maxToolCallsPerTurn, audit, policy } = args;
+  state.status = "planning";
 
   const planProposal = await proposePlan({
     goal: state.goal,
     provider,
     registry,
     stateSummary: summarizeState(state),
-    constraints: {
-      maxSteps: maxTurns,
-      maxToolCallsPerTurn,
-      acceptanceLocked: true,
-      techStackLocked: true
-    },
+    policy,
+    maxToolCallsPerTurn,
     instructions: PLAN_INSTRUCTIONS,
     previousResponseId: state.lastResponseId,
     truncation: state.flags.truncation,
@@ -265,6 +271,7 @@ const runAgentPlanMode = async (args: {
 
   const completed = new Set<string>();
   const taskFailures = new Map<string, string[]>();
+  let replans = 0;
 
   for (let turn = 1; turn <= maxTurns; turn += 1) {
     state.budgets.usedTurns = turn;
@@ -274,50 +281,49 @@ const runAgentPlanMode = async (args: {
     if (!nextTask) {
       if (completed.size === currentPlan.tasks.length) {
         state.phase = "DONE";
+        state.status = "done";
         break;
       }
       state.phase = "FAILED";
+      state.status = "failed";
       state.lastError = { kind: "Config", message: "No executable task found (dependency cycle or invalid plan)" };
       break;
     }
 
+    state.status = "executing";
     state.currentTaskId = nextTask.id;
 
     let taskDone = false;
     let attempts = 0;
 
-    while (!taskDone && attempts < 3) {
+    while (!taskDone && attempts < policy.budgets.max_retries_per_task) {
       attempts += 1;
-      const taskGoal = `${state.goal}\n\nExecute task ${nextTask.id}: ${nextTask.title}\n${nextTask.description}\n`;
-      const proposed = await proposeNextActions({
-        goal: taskGoal,
+      const actionPlan = await proposeTaskActionPlan({
+        goal: state.goal,
         provider,
-        registry,
-        toolDocs: args.toolDocs,
+        policy,
+        task: nextTask,
+        planSummary: summarizePlan(currentPlan),
         stateSummary: {
           ...(summarizeState(state) as Record<string, unknown>),
-          currentTask: nextTask,
-          previousFailures: taskFailures.get(nextTask.id) ?? []
+          currentTask: nextTask
         },
-        maxToolCallsPerTurn,
-        instructions:
-          "You are executing one task from a locked plan. Return only tool calls needed for this task. Do not modify the plan in this step.",
+        toolIndex: renderToolIndex(registry),
+        recentFailures: taskFailures.get(nextTask.id) ?? [],
         previousResponseId: state.lastResponseId,
+        instructions:
+          "Plan mode task execution: return TaskActionPlanV1 JSON for this task only. Do not modify global plan here.",
         truncation: state.flags.truncation,
         contextManagement:
           typeof state.flags.compactionThreshold === "number"
             ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
             : undefined
       });
-      state.lastResponseId = proposed.responseId ?? state.lastResponseId;
+      state.lastResponseId = actionPlan.responseId ?? state.lastResponseId;
 
-      let toolCalls = proposed.toolCalls.slice(0, maxToolCallsPerTurn);
-      if (toolCalls.length === 0 && nextTask.tool_hints.length > 0) {
-        toolCalls = nextTask.tool_hints
-          .filter((name) => !!registry[name])
-          .slice(0, maxToolCallsPerTurn)
-          .map((name) => ({ name, input: {} }));
-      }
+      let toolCalls = actionPlan.actionPlan.actions.map((item) => ({ name: item.name, input: item.input }));
+      toolCalls = toolCalls.slice(0, Math.min(maxToolCallsPerTurn, policy.budgets.max_actions_per_task));
+      state.status = "executing";
 
       state.toolCalls = toolCalls;
       state.toolResults = [];
@@ -341,24 +347,28 @@ const runAgentPlanMode = async (args: {
           touchedPaths: executed.touchedPaths
         });
         simpleToolResults.push({ name: executed.toolName, ok: executed.ok });
-        if (!executed.ok) break;
+        const actionRule = actionPlan.actionPlan.actions.find((item) => item.name === call.name);
+        if (!executed.ok && actionRule?.on_fail !== "continue") break;
       }
 
-      const check = await evaluateSuccessCriteria({
+      state.status = "reviewing";
+      const check = await evaluateSuccessCriteriaWithTools({
         task: nextTask,
-        appDir: state.appDir,
-        runCmdImpl: ctx.runCmdImpl,
+        registry,
+        ctx,
+        state,
         toolResults: simpleToolResults,
-        outDir: state.outDir
+        humanReview: args.humanReview
       });
+      turnAuditResults.push(...check.toolAudit.map((item) => ({ name: item.name, ok: item.ok, error: item.error })));
 
       audit.recordTurn({
         turn,
-        llmRaw: proposed.raw,
-        llmPreviousResponseId: proposed.previousResponseIdSent,
-        llmResponseId: proposed.responseId,
-        llmUsage: proposed.usage,
-        note: proposed.reasoning,
+        llmRaw: actionPlan.raw,
+        llmPreviousResponseId: actionPlan.previousResponseIdSent,
+        llmResponseId: actionPlan.responseId,
+        llmUsage: actionPlan.usage,
+        note: `task_action_plan for ${nextTask.id}`,
         toolCalls,
         toolResults: turnAuditResults
       });
@@ -372,11 +382,13 @@ const runAgentPlanMode = async (args: {
 
       taskFailures.set(nextTask.id, check.failures);
 
-      if (attempts >= 3) {
+      if (attempts >= policy.budgets.max_retries_per_task) {
+        state.status = "replanning";
         const changeProposal = await proposePlanChange({
           provider,
           goal: state.goal,
           currentPlan,
+          policy,
           stateSummary: {
             ...(summarizeState(state) as Record<string, unknown>),
             failedTask: nextTask.id,
@@ -397,11 +409,8 @@ const runAgentPlanMode = async (args: {
 
         const decision = evaluatePlanChange({
           request: changeProposal.changeRequest,
-          maxSteps: state.budgets.maxTurns,
-          currentTaskCount: currentPlan.tasks.length,
-          allowedToolNames: Object.keys(registry),
-          allowedCommandPrefixes: ["pnpm", "cargo", "node", "tauri"],
-          userExplicitlyAllowedRelaxAcceptance: false
+          policy,
+          currentTaskCount: currentPlan.tasks.length
         });
 
         state.planHistory?.push({ type: "change_decision", decision });
@@ -419,6 +428,7 @@ const runAgentPlanMode = async (args: {
 
         if (decision.decision !== "approved") {
           state.phase = "FAILED";
+          state.status = "failed";
           state.lastError = {
             kind: "Config",
             message: `Plan change ${decision.decision}: ${decision.reason}${
@@ -428,8 +438,16 @@ const runAgentPlanMode = async (args: {
           break;
         }
 
-        state.planData = applyPlanChange(currentPlan, changeProposal.changeRequest);
+        if (replans >= policy.budgets.max_replans) {
+          state.phase = "FAILED";
+          state.status = "failed";
+          state.lastError = { kind: "Config", message: `Replan budget exceeded: ${replans} >= ${policy.budgets.max_replans}` };
+          break;
+        }
+
+        state.planData = applyPlanChangePatch(currentPlan, changeProposal.changeRequest);
         state.planVersion = (state.planVersion ?? 1) + 1;
+        replans += 1;
       }
     }
 
@@ -438,6 +456,7 @@ const runAgentPlanMode = async (args: {
 
   if (state.phase !== "FAILED" && state.phase !== "DONE") {
     state.phase = "FAILED";
+    state.status = "failed";
     state.lastError = state.lastError ?? { kind: "Unknown", message: "max turns reached" };
   }
 };
@@ -454,6 +473,7 @@ const runAgentPhaseMode = async (args: {
   humanReview?: (args: { reason: string; patchPaths: string[]; phase: AgentState["phase"] }) => Promise<boolean>;
 }) => {
   const { state, provider, registry, toolDocs, ctx, maxTurns, maxToolCallsPerTurn, audit } = args;
+  state.status = "executing";
 
   for (let turn = 1; turn <= maxTurns; turn += 1) {
     state.budgets.usedTurns = turn;
@@ -791,6 +811,7 @@ const runAgentPhaseMode = async (args: {
     state.phase = "FAILED";
     state.lastError = state.lastError ?? { kind: "Unknown", message: "max turns reached" };
   }
+  state.status = state.phase === "DONE" ? "done" : "failed";
 };
 
 export const runAgent = async (args: {
@@ -801,6 +822,7 @@ export const runAgent = async (args: {
   verify: boolean;
   repair: boolean;
   mode?: "phase" | "plan";
+  policy?: AgentPolicy;
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
   maxPatches?: number;
@@ -824,6 +846,15 @@ export const runAgent = async (args: {
   const discovered = args.registry ? null : await loadToolRegistryWithDocs(args.registryDeps);
   const registry = args.registry ?? discovered?.registry ?? (await createToolRegistry(args.registryDeps));
   const toolDocs = discovered?.docs ?? buildToolDocPack(registry);
+  const policy =
+    args.policy ??
+    defaultAgentPolicy({
+      maxSteps: maxTurns,
+      maxActionsPerTask: maxToolCallsPerTurn,
+      maxRetriesPerTask: 3,
+      maxReplans: 3,
+      allowedTools: Object.keys(registry)
+    });
 
   const state: AgentState = {
     phase: "BOOT",
@@ -838,6 +869,7 @@ export const runAgent = async (args: {
       truncation,
       compactionThreshold
     },
+    status: mode === "plan" ? "planning" : undefined,
     usedLLM: false,
     verifyHistory: [],
     budgets: {
@@ -898,6 +930,7 @@ export const runAgent = async (args: {
       maxTurns,
       maxToolCallsPerTurn,
       audit,
+      policy,
       humanReview: args.humanReview
     });
   }
@@ -912,6 +945,8 @@ export const runAgent = async (args: {
     budgets: state.budgets,
     lastError: state.lastError,
     mode: state.flags.mode,
+    status: state.status,
+    policy,
     toolIndex: renderToolIndex(registry)
   });
 

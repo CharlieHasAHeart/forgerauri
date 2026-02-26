@@ -56,7 +56,10 @@ describe("agent plan mode", () => {
         ]
       }),
       JSON.stringify({
-        toolCalls: [{ name: "tool_touch_file", input: { path: "done.txt", content: "ok" } }]
+        version: "v1",
+        task_id: "t1",
+        rationale: "write marker file",
+        actions: [{ name: "tool_touch_file", input: { path: "done.txt", content: "ok" } }]
       })
     ]);
 
@@ -79,6 +82,28 @@ describe("agent plan mode", () => {
           return { ok: true, data: { written: true }, meta: { touchedPaths: [target] } };
         },
         examples: []
+      },
+      tool_check_file_exists: {
+        name: "tool_check_file_exists",
+        description: "check file exists",
+        inputSchema: z.object({ base: z.enum(["appDir", "outDir"]), path: z.string() }),
+        inputJsonSchema: {},
+        outputSchema: z.object({ ok: z.boolean(), exists: z.boolean(), absolutePath: z.string() }),
+        outputJsonSchema: {},
+        category: "low",
+        capabilities: ["check"],
+        safety: { sideEffects: "none" },
+        docs: "",
+        run: async (input) => {
+          const target = join(outDir, input.path);
+          try {
+            await writeFile(target, "ok", { flag: "a" });
+            return { ok: true, data: { ok: true, exists: true, absolutePath: target }, meta: { touchedPaths: [] } };
+          } catch {
+            return { ok: false, error: { code: "E", message: "missing" }, meta: { touchedPaths: [] } };
+          }
+        },
+        examples: []
       }
     };
 
@@ -98,6 +123,7 @@ describe("agent plan mode", () => {
 
     expect(result.ok).toBe(true);
     expect(result.state.phase).toBe("DONE");
+    expect(result.state.status).toBe("done");
     expect(result.state.completedTasks).toContain("t1");
   });
 
@@ -124,16 +150,17 @@ describe("agent plan mode", () => {
           }
         ]
       }),
-      JSON.stringify({ toolCalls: [] }),
-      JSON.stringify({ toolCalls: [] }),
-      JSON.stringify({ toolCalls: [] }),
+      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
       JSON.stringify({
-        version: "v1",
+        version: "v2",
         reason: "let us skip acceptance",
         change_type: "relax_acceptance",
         evidence: ["task failing"],
         impact: { steps_delta: 0, risk: "low" },
-        requested_tools: []
+        requested_tools: [],
+        patch: [{ op: "edit_acceptance", changes: { locked: false } }]
       })
     ]);
 
@@ -146,7 +173,20 @@ describe("agent plan mode", () => {
       verify: false,
       repair: false,
       provider,
-      registry: {},
+      registry: {
+        tool_noop: {
+          name: "tool_noop",
+          description: "noop",
+          inputSchema: z.object({}).passthrough(),
+          inputJsonSchema: {},
+          category: "low",
+          capabilities: [],
+          safety: { sideEffects: "none" },
+          docs: "",
+          run: async () => ({ ok: true, data: {}, meta: { touchedPaths: [] } }),
+          examples: []
+        }
+      },
       maxTurns: 6,
       maxToolCallsPerTurn: 2
     });

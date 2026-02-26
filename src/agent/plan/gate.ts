@@ -1,31 +1,10 @@
-import type { PlanChangeDecision, PlanChangeRequestV1 } from "./schema.js";
+import type { AgentPolicy } from "../policy.js";
+import type { PlanChangeDecision, PlanChangeRequestV2 } from "./schema.js";
 
 export type PlanChangeGateInput = {
-  request: PlanChangeRequestV1;
-  maxSteps: number;
+  request: PlanChangeRequestV2;
+  policy: AgentPolicy;
   currentTaskCount: number;
-  allowedToolNames: string[];
-  allowedCommandPrefixes?: string[];
-  userExplicitlyAllowedRelaxAcceptance?: boolean;
-};
-
-const hasDisallowedTools = (requestedTools: string[], allowedToolNames: string[]): boolean => {
-  const allow = new Set(allowedToolNames);
-  return requestedTools.some((tool) => !allow.has(tool));
-};
-
-const hasDisallowedCommands = (request: PlanChangeRequestV1, allowedCommandPrefixes: string[] | undefined): boolean => {
-  if (!allowedCommandPrefixes || !request.proposed_plan) return false;
-  const allowed = new Set(allowedCommandPrefixes);
-
-  for (const task of request.proposed_plan.tasks) {
-    for (const criterion of task.success_criteria) {
-      if (criterion.type !== "command") continue;
-      if (!allowed.has(criterion.cmd)) return true;
-    }
-  }
-
-  return false;
 };
 
 const approved = (reason: string): PlanChangeDecision => ({
@@ -46,23 +25,54 @@ const needsEvidence = (reason: string, requiredEvidence: string[]): PlanChangeDe
   required_evidence: requiredEvidence
 });
 
-export const evaluatePlanChange = (input: PlanChangeGateInput): PlanChangeDecision => {
-  const { request } = input;
+const hasDisallowedTools = (requestedTools: string[], allowedToolNames: string[]): boolean => {
+  const allow = new Set(allowedToolNames);
+  return requestedTools.some((tool) => !allow.has(tool));
+};
 
-  if (hasDisallowedTools(request.requested_tools, input.allowedToolNames)) {
+const patchTouchesAcceptanceOrTech = (request: PlanChangeRequestV2): { acceptance: boolean; tech: boolean } => ({
+  acceptance: request.patch.some((op) => op.op === "edit_acceptance"),
+  tech: request.patch.some((op) => op.op === "edit_tech_stack")
+});
+
+const containsDebugStyleScope = (request: PlanChangeRequestV2): boolean => {
+  const lowerReason = request.reason.toLowerCase();
+  const reasonHints = ["debug", "test", "build", "repair", "fix", "verify"];
+  if (reasonHints.some((token) => lowerReason.includes(token))) return true;
+
+  return request.patch.some(
+    (op) => op.op === "add_task" && ["debug", "test", "build", "repair", "verify"].includes(op.task.task_type)
+  );
+};
+
+const hasMigrationImpact = (risk: string): boolean => /migrat|impact|compat|risk/i.test(risk);
+
+export const evaluatePlanChange = (input: PlanChangeGateInput): PlanChangeDecision => {
+  const { request, policy } = input;
+
+  if (hasDisallowedTools(request.requested_tools, policy.safety.allowed_tools)) {
     return denied("request uses disallowed tools");
   }
 
-  if (hasDisallowedCommands(request, input.allowedCommandPrefixes)) {
-    return denied("request introduces disallowed command checks");
-  }
+  const touches = patchTouchesAcceptanceOrTech(request);
 
-  if (request.change_type === "relax_acceptance" && !input.userExplicitlyAllowedRelaxAcceptance) {
+  if (request.change_type === "relax_acceptance" && !policy.userExplicitlyAllowedRelaxAcceptance) {
     return denied("relax_acceptance is blocked unless user explicitly allows it");
   }
 
+  if (policy.acceptance.locked && touches.acceptance && !policy.userExplicitlyAllowedRelaxAcceptance) {
+    return denied("acceptance is locked by policy");
+  }
+
+  if (policy.tech_stack_locked && touches.tech) {
+    return denied("tech stack is locked by policy");
+  }
+
   if (request.change_type === "reorder_tasks") {
-    return approved("reorder_tasks allowed without scope change");
+    if (!touches.acceptance && !touches.tech) {
+      return approved("reorder_tasks allowed without acceptance/tech changes");
+    }
+    return denied("reorder_tasks cannot modify acceptance or tech stack");
   }
 
   if (request.change_type === "scope_reduce") {
@@ -70,31 +80,28 @@ export const evaluatePlanChange = (input: PlanChangeGateInput): PlanChangeDecisi
   }
 
   if (request.change_type === "add_task") {
-    const stepsAfter = (request.proposed_plan?.tasks.length ?? input.currentTaskCount) + Math.max(0, request.impact.steps_delta);
-    const withinBudget = stepsAfter <= input.maxSteps;
-    const lowRisk = ["debug", "test", "build", "repair", "verify", "fix"].some((token) => request.reason.toLowerCase().includes(token));
-
-    if (withinBudget && lowRisk) {
+    const stepsAfter = input.currentTaskCount + Math.max(0, request.impact.steps_delta);
+    const withinBudget = stepsAfter <= policy.budgets.max_steps;
+    if (withinBudget && containsDebugStyleScope(request)) {
       return approved("add_task approved for debug/test/build-fix within budget");
     }
-
-    return needsEvidence("add_task requires evidence or exceeds budget", ["failure log", "estimated added steps"]);
+    return needsEvidence("add_task requires stronger evidence or exceeds budget", ["failure evidence", "step impact estimate"]);
   }
 
   if (request.change_type === "scope_expand") {
-    if (request.evidence.length > 0 && request.impact.risk.trim().length > 0) {
-      return needsEvidence("scope_expand requires explicit approval after evidence review", ["impact estimate", "user approval"]);
-    }
-    return needsEvidence("scope_expand requires evidence and impact estimate", ["evidence", "impact estimate"]);
+    return needsEvidence("scope_expand requires explicit approval", ["impact estimate", "approval note"]);
   }
 
   if (request.change_type === "replace_tech") {
     const hasTwoEvidences = request.evidence.length >= 2;
-    const hasMigrationImpact = /migrat|impact|compat|risk/i.test(request.impact.risk);
-    if (hasTwoEvidences && hasMigrationImpact) {
-      return needsEvidence("replace_tech requires human confirmation", ["two distinct failures", "migration impact"]);
+    if (!hasTwoEvidences || !hasMigrationImpact(request.impact.risk)) {
+      return needsEvidence("replace_tech requires >=2 distinct evidence items and migration impact", ["two failures", "migration impact"]);
     }
-    return needsEvidence("replace_tech requires two failures and migration impact", ["two distinct failures", "migration impact"]);
+    return needsEvidence("replace_tech still requires explicit approval", ["approval note"]);
+  }
+
+  if (request.change_type === "remove_task" || request.change_type === "edit_task") {
+    return approved(`${request.change_type} approved by deterministic gate`);
   }
 
   return denied("unknown change type");

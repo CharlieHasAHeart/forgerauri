@@ -14,10 +14,12 @@
  * Agent mode is the only supported external workflow.
  */
 import { createInterface } from "node:readline/promises";
+import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { ZodError } from "zod";
 import { loadEnvFile } from "./config/loadEnv.js";
 import { runAgent } from "./agent/runtime.js";
+import type { AgentPolicy } from "./agent/policy.js";
 
 type CliOptions = {
   specPath?: string;
@@ -35,6 +37,7 @@ type CliOptions = {
   maxTurns: number;
   maxPatches: number;
   mode: "plan" | "phase";
+  policyInput?: string;
   truncation: "auto" | "disabled";
   compactionThreshold?: number;
 };
@@ -63,6 +66,7 @@ const parseArgs = (argv: string[]): CliOptions => {
   let maxTurns = 8;
   let maxPatches = 6;
   let mode: "plan" | "phase" = "plan";
+  let policyInput: string | undefined;
   let truncation: "auto" | "disabled" = "auto";
   let compactionThreshold: number | undefined;
 
@@ -106,6 +110,11 @@ const parseArgs = (argv: string[]): CliOptions => {
     if (arg === "--truncation") {
       const value = argv[i + 1];
       truncation = value === "disabled" ? "disabled" : "auto";
+      i += 1;
+      continue;
+    }
+    if (arg === "--policy") {
+      policyInput = argv[i + 1];
       i += 1;
       continue;
     }
@@ -166,6 +175,7 @@ const parseArgs = (argv: string[]): CliOptions => {
     maxTurns,
     maxPatches,
     mode,
+    policyInput,
     truncation,
     compactionThreshold
   };
@@ -173,7 +183,14 @@ const parseArgs = (argv: string[]): CliOptions => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--agent-mode plan|phase] [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
+  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--agent-mode plan|phase] [--policy <json-or-path>] [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
+};
+
+const parsePolicy = async (input?: string): Promise<AgentPolicy | undefined> => {
+  if (!input) return undefined;
+  const trimmed = input.trim();
+  const raw = trimmed.startsWith("{") ? trimmed : await readFile(trimmed, "utf8");
+  return JSON.parse(raw) as AgentPolicy;
 };
 
 const runAgentMode = async (options: CliOptions): Promise<void> => {
@@ -187,6 +204,7 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
   const finalApply = options.plan ? false : apply;
   const finalVerify = options.plan ? false : verify;
   const finalRepair = options.plan ? false : repair;
+  const policy = await parsePolicy(options.policyInput);
 
   const humanReview = options.autoApprove
     ? undefined
@@ -215,6 +233,7 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     maxTurns: options.maxTurns,
     maxPatches: options.maxPatches,
     mode: options.mode,
+    policy,
     truncation: options.truncation,
     compactionThreshold: options.compactionThreshold,
     humanReview
