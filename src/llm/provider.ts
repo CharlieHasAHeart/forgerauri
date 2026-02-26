@@ -11,10 +11,13 @@ export type LlmCallOptions = {
   store?: boolean;
   truncation?: "auto" | "disabled" | (string & {});
   include?: string[];
-  metadata?: Record<string, string>;
+  metadata?: Record<string, unknown>;
   promptCacheKey?: string;
   safetyIdentifier?: string;
-  textFormat?: unknown;
+  textFormat?:
+    | { type: "json_schema"; name: string; schema: unknown; strict?: boolean; description?: string }
+    | { type: "json_object" }
+    | { type: "text" };
 };
 
 export type LlmResponse = {
