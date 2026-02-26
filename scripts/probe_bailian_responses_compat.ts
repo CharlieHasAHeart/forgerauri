@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "../src/config/loadEnv.js";
 import { acceptabilityCatalog, behavioralCatalog } from "./probe/catalog.js";
@@ -39,6 +39,7 @@ type ModelResult = {
   fields: FieldResult[];
   observedOutputItemTypes: string[];
   observedContentTypes: string[];
+  documentedCoverage: Array<{ parameter: string; status: ProbeStatus; source: string }>;
 };
 
 type CallOutcome = {
@@ -58,6 +59,8 @@ const truncate = (value: string, max = MAX_TEXT): string => (value.length > max 
 
 const now = (): string => new Date().toISOString();
 
+const DOC_PATH = "docs/openai_responses_create_api.md";
+
 const parseModels = (): string[] => {
   const fromList = process.env.PROBE_MODELS?.split(",").map((v) => v.trim()).filter(Boolean) ?? [];
   if (fromList.length > 0) return fromList;
@@ -68,6 +71,16 @@ const parseModels = (): string[] => {
 const extractResponseId = (json: unknown): string | undefined => {
   const root = (json ?? {}) as Record<string, unknown>;
   return typeof root.id === "string" ? root.id : undefined;
+};
+
+const extractDocumentedParams = async (): Promise<string[]> => {
+  try {
+    const doc = await readFile(DOC_PATH, "utf8");
+    const matches = [...doc.matchAll(/^- `([a-zA-Z0-9_]+):/gm)];
+    return Array.from(new Set(matches.map((m) => m[1]))).sort();
+  } catch {
+    return [];
+  }
 };
 
 const makeCaller = (baseUrl: string, apiKey: string, timeoutMs: number) => {
@@ -88,6 +101,80 @@ const mergeStatus = (statuses: ProbeStatus[]): ProbeStatus => {
   const set = new Set(statuses);
   if (set.size > 1) return "flaky";
   return statuses[0] ?? "unknown";
+};
+
+const deriveDocCoverage = (
+  documentedParams: string[],
+  fields: FieldResult[]
+): Array<{ parameter: string; status: ProbeStatus; source: string }> => {
+  const statusByProbe = new Map<string, ProbeStatus>();
+  for (const field of fields) {
+    statusByProbe.set(field.name, field.status);
+  }
+
+  const probePriority: Record<string, string[]> = {
+    background: ["background"],
+    context_management: ["context_management_compaction", "context_management_behavior"],
+    conversation: ["conversation", "previous_response_id_behavior"],
+    include: [
+      "include_logprobs",
+      "include_reasoning_encrypted_content",
+      "include_web_search_sources",
+      "include_file_search_results"
+    ],
+    input: ["input_string", "input_message_array_easy", "input_message_array_content_list"],
+    instructions: ["instructions_behavior", "instructions_acceptability"],
+    max_output_tokens: ["max_output_tokens"],
+    max_tool_calls: ["max_tool_calls"],
+    metadata: ["metadata"],
+    model: ["model"],
+    parallel_tool_calls: ["parallel_tool_calls"],
+    previous_response_id: ["previous_response_id_behavior", "previous_response_id_acceptability"],
+    prompt: ["prompt"],
+    prompt_cache_key: ["prompt_cache_key"],
+    prompt_cache_retention: ["prompt_cache_retention"],
+    reasoning: ["reasoning"],
+    safety_identifier: ["safety_identifier"],
+    service_tier: ["service_tier"],
+    store: ["store"],
+    stream: ["stream_behavior", "stream_true", "stream_false"],
+    stream_options: ["stream_options", "stream_behavior"],
+    temperature: ["temperature"],
+    text: ["text_format_text", "text_format_json_object_behavior", "text_format_json_schema_behavior"],
+    tool_choice: ["tool_choice_auto", "tool_choice_none", "tool_choice_required"],
+    tools: [
+      "tools_function_call_behavior",
+      "tools_builtin_behavior",
+      "tools_builtin_web_search",
+      "tools_builtin_web_extractor",
+      "tools_builtin_code_interpreter"
+    ],
+    top_logprobs: ["top_logprobs"],
+    top_p: ["top_p"],
+    truncation: ["truncation_behavior", "truncation_auto", "truncation_disabled"],
+    user: ["user"]
+  };
+
+  const rank: Record<ProbeStatus, number> = {
+    supported: 5,
+    flaky: 4,
+    ignored: 3,
+    unknown: 2,
+    rejected: 1
+  };
+
+  return documentedParams.map((parameter) => {
+    const probeNames = probePriority[parameter] ?? [];
+    let best: { status: ProbeStatus; source: string } = { status: "unknown", source: "not_tested" };
+    for (const probeName of probeNames) {
+      const status = statusByProbe.get(probeName);
+      if (!status) continue;
+      if (rank[status] > rank[best.status]) {
+        best = { status, source: probeName };
+      }
+    }
+    return { parameter, status: best.status, source: best.source };
+  });
 };
 
 const runAcceptability = async (
@@ -630,7 +717,7 @@ const runBehavioral = async (
 };
 
 const buildMarkdown = (
-  meta: { baseUrl: string; models: string[]; timestamp: string; timeoutMs: number; repeat: number },
+  meta: { baseUrl: string; models: string[]; timestamp: string; timeoutMs: number; repeat: number; documentedParams: string[] },
   resultsByModel: Record<string, ModelResult>
 ): string => {
   const lines: string[] = [];
@@ -641,6 +728,7 @@ const buildMarkdown = (
   lines.push(`- Generated at: ${meta.timestamp}`);
   lines.push(`- Timeout(ms): ${meta.timeoutMs}`);
   lines.push(`- Repeat: ${meta.repeat}`);
+  lines.push(`- OpenAI reference source: \`${DOC_PATH}\``);
   lines.push("");
   lines.push("## Status Criteria");
   lines.push("");
@@ -664,6 +752,14 @@ const buildMarkdown = (
       lines.push(`| ${field.name} | ${field.category} | ${field.kind} | ${field.status} | ${note} |`);
     }
 
+    lines.push("");
+    lines.push("### OpenAI Body Parameter Coverage");
+    lines.push("");
+    lines.push("| Parameter (OpenAI docs) | Derived Status | Probe Source |");
+    lines.push("|---|---|---|");
+    for (const item of modelResult.documentedCoverage) {
+      lines.push(`| ${item.parameter} | ${item.status} | ${item.source} |`);
+    }
     lines.push("");
     lines.push("### Key Findings");
     lines.push("");
@@ -717,6 +813,7 @@ const run = async (): Promise<void> => {
   const timeoutMs = Number(process.env.PROBE_TIMEOUT_MS || "30000");
   const repeat = Math.max(1, Number(process.env.PROBE_REPEAT || "2"));
   const outDir = process.env.PROBE_OUTDIR || "generated";
+  const documentedParams = await extractDocumentedParams();
 
   const resultsByModel: Record<string, ModelResult> = {};
 
@@ -732,11 +829,13 @@ const run = async (): Promise<void> => {
 
     const observedOutputItemTypes = Array.from(new Set(fields.flatMap((f) => f.evidence.outputItemTypes ?? []))).sort();
     const observedContentTypes = Array.from(new Set(fields.flatMap((f) => f.evidence.contentTypes ?? []))).sort();
+    const documentedCoverage = deriveDocCoverage(documentedParams, fields);
 
     resultsByModel[model] = {
       fields,
       observedOutputItemTypes,
-      observedContentTypes
+      observedContentTypes,
+      documentedCoverage
     };
   }
 
@@ -747,6 +846,7 @@ const run = async (): Promise<void> => {
       timestamp: now(),
       timeoutMs,
       repeat,
+      documentedParams,
       auth: "Bearer",
       notes: "DASHSCOPE_MODEL should be set to a model your account can access"
     },
@@ -755,14 +855,20 @@ const run = async (): Promise<void> => {
 
   const jsonPath = resolve(outDir, "bailian_responses_compatibility.json");
   const mdPath = resolve(outDir, "bailian_responses_compatibility.md");
+  const docsMdPath = resolve("docs", "bailian_responses_compatibility.md");
 
   await mkdir(dirname(jsonPath), { recursive: true });
+  await mkdir(dirname(docsMdPath), { recursive: true });
+
+  const markdown = buildMarkdown(report.meta, resultsByModel);
 
   await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  await writeFile(mdPath, buildMarkdown(report.meta, resultsByModel), "utf8");
+  await writeFile(mdPath, markdown, "utf8");
+  await writeFile(docsMdPath, markdown, "utf8");
 
   console.log(`Compatibility JSON: ${jsonPath}`);
   console.log(`Compatibility MD: ${mdPath}`);
+  console.log(`Docs MD: ${docsMdPath}`);
 
   for (const model of models) {
     console.log(`--- ${model} ---`);

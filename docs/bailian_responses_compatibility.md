@@ -2,9 +2,10 @@
 
 - Endpoint: `https://dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1/responses`
 - Auth: `Authorization: Bearer <DASHSCOPE_API_KEY>`
-- Generated at: 2026-02-26T07:05:31.600Z
+- Generated at: 2026-02-26T08:11:57.342Z
 - Timeout(ms): 5000
 - Repeat: 2
+- OpenAI reference source: `docs/openai_responses_create_api.md`
 
 ## Status Criteria
 
@@ -18,8 +19,10 @@
 
 | Field | Category | Kind | Status | Notes |
 |---|---|---|---|---|
+| background | execution | acceptability | supported | background execution switch |
 | context_management_behavior | context | behavioral | unknown | accepted but no explicit compaction signal |
 | context_management_compaction | context | acceptability | supported | context_management compaction |
+| conversation | conversation | acceptability | supported | conversation id envelope |
 | enable_thinking_behavior | thinking | behavioral | supported | accepted with observable difference |
 | enable_thinking_true | thinking | acceptability | flaky | enable_thinking true |
 | include_file_search_results | include | acceptability | supported | include file_search_call.results |
@@ -29,13 +32,16 @@
 | input_message_array_content_list | input | acceptability | supported | input as message array with input_text content list |
 | input_message_array_easy | input | acceptability | supported | input as message array with string content |
 | input_string | input | acceptability | supported | input as plain string |
-| instructions_behavior | instructions | behavioral | flaky | control=OK_BASE |
+| instructions_acceptability | instructions | acceptability | supported | instructions field accepted |
+| instructions_behavior | instructions | behavioral | supported | instructions overrode prompt |
 | max_output_tokens | sampling | acceptability | supported | max_output_tokens field |
 | max_tool_calls | tools | acceptability | supported | max_tool_calls |
 | metadata | metadata | acceptability | supported | metadata key-value |
 | model | core | acceptability | supported | baseline model field |
 | parallel_tool_calls | tools | acceptability | supported | parallel_tool_calls |
+| previous_response_id_acceptability | conversation | acceptability | supported | previous_response_id accepted format |
 | previous_response_id_behavior | conversation | behavioral | supported | checked recall via previous_response_id |
+| prompt | prompt | acceptability | supported | prompt object accepted |
 | prompt_cache_key | cache | acceptability | supported | prompt_cache_key field |
 | prompt_cache_retention | cache | acceptability | supported | prompt_cache_retention field |
 | reasoning | reasoning | acceptability | flaky | reasoning field |
@@ -43,11 +49,12 @@
 | service_tier | service | acceptability | supported | service_tier field |
 | store | lifecycle | acceptability | supported | store field |
 | stream_behavior | streaming | behavioral | supported | SSE markers observed |
+| stream_false | streaming | acceptability | supported | stream false |
 | stream_options | streaming | acceptability | supported | stream_options.include_obfuscation |
 | stream_true | streaming | acceptability | supported | stream true |
 | temperature | sampling | acceptability | supported | temperature field |
 | text_format_json_object | text_format | acceptability | supported | text.format json_object |
-| text_format_json_object_behavior | text_format | behavioral | flaky | json_object output parsed as object |
+| text_format_json_object_behavior | text_format | behavioral | ignored | output not parseable JSON |
 | text_format_json_schema | text_format | acceptability | supported | text.format json_schema |
 | text_format_json_schema_behavior | text_format | behavioral | ignored | text not parseable as JSON |
 | text_format_text | text_format | acceptability | supported | text.format text |
@@ -67,9 +74,43 @@
 | truncation_disabled | context | acceptability | supported | truncation disabled |
 | user | legacy | acceptability | supported | user field |
 
+### OpenAI Body Parameter Coverage
+
+| Parameter (OpenAI docs) | Derived Status | Probe Source |
+|---|---|---|
+| background | supported | background |
+| context_management | supported | context_management_compaction |
+| conversation | supported | conversation |
+| include | supported | include_logprobs |
+| input | supported | input_string |
+| instructions | supported | instructions_behavior |
+| max_output_tokens | supported | max_output_tokens |
+| max_tool_calls | supported | max_tool_calls |
+| metadata | supported | metadata |
+| model | supported | model |
+| parallel_tool_calls | supported | parallel_tool_calls |
+| previous_response_id | supported | previous_response_id_behavior |
+| prompt | supported | prompt |
+| prompt_cache_key | supported | prompt_cache_key |
+| prompt_cache_retention | supported | prompt_cache_retention |
+| reasoning | flaky | reasoning |
+| safety_identifier | supported | safety_identifier |
+| service_tier | supported | service_tier |
+| store | supported | store |
+| stream | supported | stream_behavior |
+| stream_options | supported | stream_options |
+| temperature | supported | temperature |
+| text | supported | text_format_text |
+| tool_choice | supported | tool_choice_auto |
+| tools | supported | tools_function_call_behavior |
+| top_logprobs | supported | top_logprobs |
+| top_p | supported | top_p |
+| truncation | supported | truncation_auto |
+| user | supported | user |
+
 ### Key Findings
 
-- instructions: **flaky** — control=OK_BASE
+- instructions: **supported** — instructions overrode prompt
 - previous_response_id: **supported** — checked recall via previous_response_id
 - text.format.json_schema: **ignored** — text not parseable as JSON
 - tools/function: **supported** — function_call observed

@@ -33,6 +33,20 @@ export const acceptabilityCatalog: ProbeCase[] = [
     makeBody: ({ model }) => ({ model, input: "ping" })
   },
   {
+    name: "background",
+    kind: "acceptability",
+    category: "execution",
+    description: "background execution switch",
+    makeBody: ({ model }) => ({ model, input: "ping", background: true })
+  },
+  {
+    name: "instructions_acceptability",
+    kind: "acceptability",
+    category: "instructions",
+    description: "instructions field accepted",
+    makeBody: ({ model }) => ({ model, input: "ping", instructions: "请只回答 pong" })
+  },
+  {
     name: "input_string",
     kind: "acceptability",
     category: "input",
@@ -45,6 +59,13 @@ export const acceptabilityCatalog: ProbeCase[] = [
     category: "input",
     description: "input as message array with string content",
     makeBody: ({ model }) => ({ model, input: [{ type: "message", role: "user", content: "ping" }] })
+  },
+  {
+    name: "conversation",
+    kind: "acceptability",
+    category: "conversation",
+    description: "conversation id envelope",
+    makeBody: ({ model }) => ({ model, input: "ping", conversation: { id: "conv_probe_dummy" } })
   },
   {
     name: "input_message_array_content_list",
@@ -78,6 +99,13 @@ export const acceptabilityCatalog: ProbeCase[] = [
     makeBody: ({ model }) => ({ model, input: "ping", max_output_tokens: 64 })
   },
   {
+    name: "previous_response_id_acceptability",
+    kind: "acceptability",
+    category: "conversation",
+    description: "previous_response_id accepted format",
+    makeBody: ({ model }) => ({ model, input: "ping", previous_response_id: "resp_probe_dummy" })
+  },
+  {
     name: "store",
     kind: "acceptability",
     category: "lifecycle",
@@ -90,6 +118,13 @@ export const acceptabilityCatalog: ProbeCase[] = [
     category: "metadata",
     description: "metadata key-value",
     makeBody: ({ model }) => ({ model, input: "ping", metadata: { probe: "true", version: "1" } })
+  },
+  {
+    name: "prompt",
+    kind: "acceptability",
+    category: "prompt",
+    description: "prompt object accepted",
+    makeBody: ({ model }) => ({ model, input: "ping", prompt: { id: "pmpt_probe_dummy", version: "1" } })
   },
   {
     name: "prompt_cache_key",
@@ -153,6 +188,13 @@ export const acceptabilityCatalog: ProbeCase[] = [
     category: "streaming",
     description: "stream true",
     makeBody: ({ model }) => ({ model, input: "ping", stream: true })
+  },
+  {
+    name: "stream_false",
+    kind: "acceptability",
+    category: "streaming",
+    description: "stream false",
+    makeBody: ({ model }) => ({ model, input: "ping", stream: false })
   },
   {
     name: "stream_options",
