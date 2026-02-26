@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { repairOnce } from "../../../repair/repairLoop.js";
+import { repairOnce } from "../../workflows/repair/repairLoop.js";
 import type { ToolPackage } from "../types.js";
 
 const inputSchema = z.object({
