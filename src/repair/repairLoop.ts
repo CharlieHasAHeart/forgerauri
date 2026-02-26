@@ -1,9 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { applyPlan } from "../generator/apply.js";
-import { makeUnifiedDiff } from "../generator/diff.js";
-import type { Plan, PlanAction } from "../generator/types.js";
-import { classifyPath } from "../generator/zones.js";
+import { toPlanActionsFromPatches } from "../generator/patchToPlanActions.js";
+import type { Plan } from "../generator/types.js";
 import type { LlmProvider } from "../llm/provider.js";
 import { runCmd, type CmdResult } from "../runner/runCmd.js";
 import { AuditCollector } from "../runtime/audit.js";
@@ -39,51 +38,6 @@ const readSnapshot = async (projectRoot: string, relativePaths: string[]): Promi
   }
 
   return snapshot;
-};
-
-const toPlanActions = async (
-  projectRoot: string,
-  patches: Array<{ filePath: string; newContent: string; reason: string }>
-): Promise<PlanAction[]> => {
-  const actions: PlanAction[] = [];
-
-  for (const patch of patches) {
-    const absolute = resolve(projectRoot, patch.filePath);
-    assertPathInside(projectRoot, absolute);
-
-    const zone = classifyPath(patch.filePath);
-    let oldText = "";
-    try {
-      oldText = await readFile(absolute, "utf8");
-    } catch {
-      oldText = "";
-    }
-
-    if (zone === "generated") {
-      actions.push({
-        type: oldText.length === 0 ? "CREATE" : "OVERWRITE",
-        path: absolute,
-        entryType: "file",
-        reason: patch.reason,
-        safe: true,
-        mode: zone,
-        content: patch.newContent
-      });
-      continue;
-    }
-
-    actions.push({
-      type: "PATCH",
-      path: absolute,
-      entryType: "file",
-      reason: zone === "user" ? "user zone; manual merge required" : "unknown zone; review required",
-      safe: true,
-      mode: zone,
-      patchText: makeUnifiedDiff({ oldText, newText: patch.newContent, filePath: patch.filePath })
-    });
-  }
-
-  return actions;
 };
 
 export const repairOnce = async (args: {
@@ -128,7 +82,7 @@ export const repairOnce = async (args: {
 
   assertPatchBudget(proposed.patches.length, maxPatches);
 
-  const actions = await toPlanActions(args.projectRoot, proposed.patches);
+  const actions = await toPlanActionsFromPatches(args.projectRoot, proposed.patches);
   const plan: Plan = {
     outDir: args.projectRoot,
     appDir: args.projectRoot,

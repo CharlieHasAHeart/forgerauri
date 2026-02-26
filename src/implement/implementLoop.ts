@@ -3,9 +3,8 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { applyPlan } from "../generator/apply.js";
-import { makeUnifiedDiff } from "../generator/diff.js";
-import type { Plan, PlanAction } from "../generator/types.js";
-import { classifyPath } from "../generator/zones.js";
+import { toPlanActionsFromPatches } from "../generator/patchToPlanActions.js";
+import type { Plan } from "../generator/types.js";
 import { getProviderFromEnv } from "../llm/index.js";
 import type { LlmProvider } from "../llm/provider.js";
 import { repairOnce } from "../repair/repairLoop.js";
@@ -29,14 +28,6 @@ const isSafeRelativePath = (projectRoot: string, filePath: string): boolean => {
   return true;
 };
 
-const readCurrentText = async (absolutePath: string): Promise<string> => {
-  try {
-    return await readFile(absolutePath, "utf8");
-  } catch {
-    return "";
-  }
-};
-
 const patchSchema = (maxPatches: number): z.ZodType<{ patches: PatchFile[] }> =>
   z.object({
     patches: z
@@ -50,43 +41,13 @@ const patchSchema = (maxPatches: number): z.ZodType<{ patches: PatchFile[] }> =>
       .max(maxPatches)
   });
 
-const createActions = async (projectRoot: string, patches: PatchFile[]): Promise<PlanAction[]> => {
-  const actions: PlanAction[] = [];
-
+const createActions = async (projectRoot: string, patches: PatchFile[]) => {
   for (const patch of patches) {
     if (!isSafeRelativePath(projectRoot, patch.filePath)) {
       throw new Error(`Invalid patch path: ${patch.filePath}`);
     }
-
-    const absolutePath = resolve(projectRoot, patch.filePath);
-    const current = await readCurrentText(absolutePath);
-    const zone = classifyPath(patch.filePath);
-
-    if (zone === "generated") {
-      actions.push({
-        type: "OVERWRITE",
-        path: absolutePath,
-        entryType: "file",
-        reason: patch.reason,
-        safe: true,
-        mode: zone,
-        content: patch.newContent
-      });
-      continue;
-    }
-
-    actions.push({
-      type: "PATCH",
-      path: absolutePath,
-      entryType: "file",
-      reason: zone === "user" ? "user zone; manual merge required" : "unknown zone; review required",
-      safe: true,
-      mode: zone,
-      patchText: makeUnifiedDiff({ oldText: current, newText: patch.newContent, filePath: patch.filePath })
-    });
   }
-
-  return actions;
+  return toPlanActionsFromPatches(projectRoot, patches);
 };
 
 const readPackageScripts = async (projectRoot: string): Promise<Record<string, unknown>> => {
