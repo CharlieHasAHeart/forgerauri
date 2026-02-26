@@ -14,6 +14,7 @@ export type LlmCallOptions = {
   metadata?: Record<string, unknown>;
   promptCacheKey?: string;
   safetyIdentifier?: string;
+  contextManagement?: Array<{ type: "compaction"; compactThreshold?: number }>;
   textFormat?:
     | { type: "json_schema"; name: string; schema: unknown; strict?: boolean; description?: string }
     | { type: "json_object" }

@@ -58,7 +58,10 @@ export type AgentState = {
     apply: boolean;
     verify: boolean;
     repair: boolean;
+    truncation: "auto" | "disabled";
+    compactionThreshold?: number;
   };
+  lastResponseId?: string;
   projectRoot?: string;
   appDir?: string;
   contract?: ContractDesignV1;

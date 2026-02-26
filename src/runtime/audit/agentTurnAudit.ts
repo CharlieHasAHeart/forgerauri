@@ -5,6 +5,9 @@ import { nextJsonCounter } from "./counter.js";
 export type AgentTurnAuditEntry = {
   turn: number;
   llmRaw: string;
+  llmPreviousResponseId?: string;
+  llmResponseId?: string;
+  llmUsage?: unknown;
   toolCalls: Array<{ name: string; input: unknown }>;
   toolResults: Array<{ name: string; ok: boolean; error?: string; touchedPaths?: string[] }>;
   note?: string;
@@ -24,6 +27,9 @@ export class AgentTurnAuditCollector {
     this.turns.push({
       ...entry,
       llmRaw: truncate(entry.llmRaw),
+      llmPreviousResponseId: entry.llmPreviousResponseId ? truncate(entry.llmPreviousResponseId, 200) : undefined,
+      llmResponseId: entry.llmResponseId ? truncate(entry.llmResponseId, 200) : undefined,
+      llmUsage: entry.llmUsage,
       toolResults: entry.toolResults.map((result) => ({
         ...result,
         error: result.error ? truncate(result.error, 8000) : undefined,

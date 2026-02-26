@@ -34,6 +34,8 @@ type CliOptions = {
   autoApprove: boolean;
   maxTurns: number;
   maxPatches: number;
+  truncation: "auto" | "disabled";
+  compactionThreshold?: number;
 };
 
 const printValidationErrors = (error: ZodError): void => {
@@ -59,6 +61,8 @@ const parseArgs = (argv: string[]): CliOptions => {
   let autoApprove = false;
   let maxTurns = 8;
   let maxPatches = 6;
+  let truncation: "auto" | "disabled" = "auto";
+  let compactionThreshold: number | undefined;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -89,6 +93,20 @@ const parseArgs = (argv: string[]): CliOptions => {
       const raw = Number(argv[i + 1]);
       const parsed = Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 6;
       maxPatches = Math.min(8, parsed);
+      i += 1;
+      continue;
+    }
+    if (arg === "--truncation") {
+      const value = argv[i + 1];
+      truncation = value === "disabled" ? "disabled" : "auto";
+      i += 1;
+      continue;
+    }
+    if (arg === "--compaction-threshold") {
+      const raw = Number(argv[i + 1]);
+      if (Number.isFinite(raw) && raw > 0) {
+        compactionThreshold = Math.floor(raw);
+      }
       i += 1;
       continue;
     }
@@ -140,12 +158,14 @@ const parseArgs = (argv: string[]): CliOptions => {
     autoApprove,
     maxTurns,
     maxPatches,
+    truncation,
+    compactionThreshold
   };
 };
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N]");
+  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
 };
 
 const runAgentMode = async (options: CliOptions): Promise<void> => {
@@ -186,6 +206,8 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     repair: finalRepair,
     maxTurns: options.maxTurns,
     maxPatches: options.maxPatches,
+    truncation: options.truncation,
+    compactionThreshold: options.compactionThreshold,
     humanReview
   });
 

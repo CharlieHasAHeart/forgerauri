@@ -10,6 +10,11 @@ import { runCmd, type CmdResult } from "../runner/runCmd.js";
 import type { AgentState, ErrorKind, VerifyProjectResult } from "./types.js";
 
 const truncate = (value: string, max = 4000): string => (value.length > max ? `${value.slice(0, max)}...<truncated>` : value);
+const AGENT_INSTRUCTIONS =
+  "You are the Brain of a coding agent. You must call tools and never fabricate results. " +
+  "Hard guardrails: user-zone files cannot be overwritten directly, only patch artifacts are allowed. " +
+  "Use tool documentation to choose calls. Prefer high-level flow: bootstrap -> design_contract -> materialize_contract -> design_ux -> materialize_ux -> design_implementation -> materialize_implementation -> design_delivery -> materialize_delivery -> validate_design -> codegen_from_design -> verify -> repair(if verify fails). " +
+  'Return JSON only: {"toolCalls":[{"name":"...","input":{}}],"note":"optional"}.';
 
 const classifyFromVerify = (result: VerifyProjectResult): ErrorKind => result.classifiedError;
 
@@ -22,6 +27,7 @@ const summarizeState = (state: AgentState): unknown => ({
   uxPath: state.uxPath,
   implPath: state.implPath,
   deliveryPath: state.deliveryPath,
+  lastResponseId: state.lastResponseId,
   designValidation: state.designValidation,
   lastDeterministicFixes: state.lastDeterministicFixes,
   repairKnownChecked: state.repairKnownChecked,
@@ -93,6 +99,8 @@ export const runAgent = async (args: {
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
   maxPatches?: number;
+  truncation?: "auto" | "disabled";
+  compactionThreshold?: number;
   provider?: LlmProvider;
   runCmdImpl?: (cmd: string, argv: string[], cwd: string) => Promise<CmdResult>;
   registry?: Record<string, ToolSpec<any>>;
@@ -104,6 +112,8 @@ export const runAgent = async (args: {
   const maxTurns = args.maxTurns ?? 16;
   const maxToolCallsPerTurn = args.maxToolCallsPerTurn ?? 4;
   const maxPatches = args.maxPatches ?? 8;
+  const truncation = args.truncation ?? "auto";
+  const compactionThreshold = args.compactionThreshold;
 
   const discovered = args.registry ? null : await loadToolRegistryWithDocs(args.registryDeps);
   const registry = args.registry ?? discovered?.registry ?? (await createToolRegistry(args.registryDeps));
@@ -117,7 +127,9 @@ export const runAgent = async (args: {
     flags: {
       apply: args.apply,
       verify: args.verify,
-      repair: args.repair
+      repair: args.repair,
+      truncation,
+      compactionThreshold
     },
     usedLLM: false,
     verifyHistory: [],
@@ -165,8 +177,16 @@ export const runAgent = async (args: {
       registry,
       toolDocs,
       stateSummary: summarizeState(state),
-      maxToolCallsPerTurn
+      maxToolCallsPerTurn,
+      instructions: AGENT_INSTRUCTIONS,
+      previousResponseId: state.lastResponseId,
+      truncation: state.flags.truncation,
+      contextManagement:
+        typeof state.flags.compactionThreshold === "number"
+          ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
+          : undefined
     });
+    state.lastResponseId = proposed.responseId ?? state.lastResponseId;
 
     let toolCalls = [...proposed.toolCalls];
 
@@ -578,6 +598,9 @@ export const runAgent = async (args: {
     audit.recordTurn({
       turn,
       llmRaw: proposed.raw,
+      llmPreviousResponseId: proposed.previousResponseIdSent,
+      llmResponseId: proposed.responseId,
+      llmUsage: proposed.usage,
       note: proposed.reasoning,
       toolCalls,
       toolResults: turnAuditResults

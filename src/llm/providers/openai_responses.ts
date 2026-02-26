@@ -35,6 +35,12 @@ const buildRequestBody = (messages: LlmMessage[], opts?: LlmCallOptions): Record
   if (opts?.metadata && typeof opts.metadata === "object") body.metadata = opts.metadata;
   if (typeof opts?.promptCacheKey === "string") body.prompt_cache_key = opts.promptCacheKey;
   if (typeof opts?.safetyIdentifier === "string") body.safety_identifier = opts.safetyIdentifier;
+  if (Array.isArray(opts?.contextManagement)) {
+    body.context_management = opts.contextManagement.map((item) => ({
+      type: item.type,
+      compact_threshold: item.compactThreshold
+    }));
+  }
   if (opts?.textFormat !== undefined) {
     body.text = { format: opts.textFormat };
   }
