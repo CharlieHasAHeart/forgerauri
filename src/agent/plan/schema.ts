@@ -209,8 +209,43 @@ export const planChangeRequestV2Schema = z.object({
 
 export type PlanChangeRequestV2 = z.infer<typeof planChangeRequestV2Schema>;
 
-export const planChangeDecisionSchema = z.object({
-  decision: z.enum(["needs_user_review", "approved", "denied"]),
+export const gateResultSchema = z.object({
+  status: z.enum(["needs_user_review", "denied"]),
+  reason: z.string().min(1),
+  guidance: z.string().min(1).optional(),
+  suggested_patch: z.array(planPatchOperationSchema).optional()
+}).superRefine((value, ctx) => {
+  if (value.status === "denied") {
+    if (!value.guidance || value.guidance.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "guidance is required when status is denied",
+        path: ["guidance"]
+      });
+    }
+    return;
+  }
+
+  if (value.guidance !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "guidance must not be provided for needs_user_review",
+      path: ["guidance"]
+    });
+  }
+  if (value.suggested_patch !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "suggested_patch must not be provided for needs_user_review",
+      path: ["suggested_patch"]
+    });
+  }
+});
+
+export type GateResult = z.infer<typeof gateResultSchema>;
+
+export const userDecisionSchema = z.object({
+  decision: z.enum(["approved", "denied"]),
   reason: z.string().min(1),
   guidance: z.string().min(1).optional(),
   suggested_patch: z.array(planPatchOperationSchema).optional()
@@ -226,33 +261,20 @@ export const planChangeDecisionSchema = z.object({
     return;
   }
 
-  if (value.decision === "approved") {
-    if (value.guidance !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "guidance must not be provided when decision is approved",
-        path: ["guidance"]
-      });
-    }
-    return;
+  if (value.guidance !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "guidance must not be provided when decision is approved",
+      path: ["guidance"]
+    });
   }
-
-  if (value.decision === "needs_user_review") {
-    if (value.guidance !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "guidance must not be provided for needs_user_review",
-        path: ["guidance"]
-      });
-    }
-    if (value.suggested_patch !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "suggested_patch must not be provided for needs_user_review",
-        path: ["suggested_patch"]
-      });
-    }
+  if (value.suggested_patch !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "suggested_patch must not be provided when decision is approved",
+      path: ["suggested_patch"]
+    });
   }
 });
 
-export type PlanChangeDecision = z.infer<typeof planChangeDecisionSchema>;
+export type UserDecision = z.infer<typeof userDecisionSchema>;

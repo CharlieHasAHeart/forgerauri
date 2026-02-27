@@ -51,7 +51,7 @@ export const recordPlanChange = (args: {
   previousResponseIdSent?: string;
   responseId?: string;
   usage?: unknown;
-  decision: { decision: string; reason: string };
+  gateResult: { status: string; reason: string };
 }): void => {
   args.audit.recordTurn({
     turn: args.turn,
@@ -59,7 +59,7 @@ export const recordPlanChange = (args: {
     llmPreviousResponseId: args.previousResponseIdSent,
     llmResponseId: args.responseId,
     llmUsage: args.usage,
-    note: `plan-change ${args.decision.decision}: ${args.decision.reason}`,
+    note: `plan-change gate ${args.gateResult.status}: ${args.gateResult.reason}`,
     toolCalls: [],
     toolResults: []
   });

@@ -1,5 +1,5 @@
 import type { AgentPolicy } from "../policy/policy.js";
-import type { PlanChangeDecision, PlanChangeRequestV2 } from "./schema.js";
+import type { GateResult, PlanChangeRequestV2 } from "./schema.js";
 
 export type PlanChangeGateInput = {
   request: PlanChangeRequestV2;
@@ -7,13 +7,13 @@ export type PlanChangeGateInput = {
   currentTaskCount: number;
 };
 
-const needsUserReview = (reason: string): PlanChangeDecision => ({
-  decision: "needs_user_review",
+const needsUserReview = (reason: string): GateResult => ({
+  status: "needs_user_review",
   reason
 });
 
-const denied = (reason: string, guidance: string): PlanChangeDecision => ({
-  decision: "denied",
+const denied = (reason: string, guidance: string): GateResult => ({
+  status: "denied",
   reason,
   guidance,
   suggested_patch: []
@@ -29,7 +29,7 @@ const patchTouchesAcceptanceOrTech = (request: PlanChangeRequestV2): { acceptanc
   tech: request.patch.some((op) => op.op === "edit_tech_stack")
 });
 
-export const evaluatePlanChange = (input: PlanChangeGateInput): PlanChangeDecision => {
+export const evaluatePlanChange = (input: PlanChangeGateInput): GateResult => {
   const { request, policy } = input;
 
   if (hasDisallowedTools(request.requested_tools, policy.safety.allowed_tools)) {

@@ -25,13 +25,13 @@ const basePolicy = () =>
 
 describe("plan gate", () => {
   test("returns needs_user_review for normal change requests", () => {
-    const decision = evaluatePlanChange({
+    const gate = evaluatePlanChange({
       request: baseRequest(),
       policy: basePolicy(),
       currentTaskCount: 3
     });
 
-    expect(decision.decision).toBe("needs_user_review");
+    expect(gate.status).toBe("needs_user_review");
   });
 
   test("denies disallowed tools with guidance", () => {
@@ -40,14 +40,14 @@ describe("plan gate", () => {
       requested_tools: ["tool_not_allowed"]
     });
 
-    const decision = evaluatePlanChange({
+    const gate = evaluatePlanChange({
       request,
       policy: basePolicy(),
       currentTaskCount: 3
     });
 
-    expect(decision.decision).toBe("denied");
-    expect((decision.guidance ?? "").length).toBeGreaterThan(0);
+    expect(gate.status).toBe("denied");
+    expect((gate.guidance ?? "").length).toBeGreaterThan(0);
   });
 
   test("denies edit_tech_stack when tech stack is locked", () => {
@@ -57,14 +57,14 @@ describe("plan gate", () => {
       patch: [{ op: "edit_tech_stack", changes: { locked: false } }]
     });
 
-    const decision = evaluatePlanChange({
+    const gate = evaluatePlanChange({
       request,
       policy: basePolicy(),
       currentTaskCount: 3
     });
 
-    expect(decision.decision).toBe("denied");
-    expect((decision.guidance ?? "").length).toBeGreaterThan(0);
+    expect(gate.status).toBe("denied");
+    expect((gate.guidance ?? "").length).toBeGreaterThan(0);
   });
 
   test("denies edit_acceptance when acceptance is locked", () => {
@@ -74,13 +74,13 @@ describe("plan gate", () => {
       patch: [{ op: "edit_acceptance", changes: { locked: false } }]
     });
 
-    const decision = evaluatePlanChange({
+    const gate = evaluatePlanChange({
       request,
       policy: basePolicy(),
       currentTaskCount: 3
     });
 
-    expect(decision.decision).toBe("denied");
-    expect((decision.guidance ?? "").length).toBeGreaterThan(0);
+    expect(gate.status).toBe("denied");
+    expect((gate.guidance ?? "").length).toBeGreaterThan(0);
   });
 });

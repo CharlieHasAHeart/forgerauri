@@ -196,11 +196,13 @@ describe("agent plan replan integration (stub toolchain)", () => {
     expect(result.state.planVersion).toBeGreaterThan(1);
 
     const changeRequestEvent = result.state.planHistory?.find((item) => item.type === "change_request");
-    const changeDecisionEvent = result.state.planHistory?.find((item) => item.type === "change_decision");
+    const changeGateEvent = result.state.planHistory?.find((item) => item.type === "change_gate_result");
+    const changeUserDecisionEvent = result.state.planHistory?.find((item) => item.type === "change_user_decision");
     expect(changeRequestEvent).toBeTruthy();
-    expect(changeDecisionEvent).toBeTruthy();
-    if (changeDecisionEvent?.type === "change_decision") {
-      expect(changeDecisionEvent.decision.decision).toBe("approved");
+    expect(changeGateEvent).toBeTruthy();
+    expect(changeUserDecisionEvent).toBeTruthy();
+    if (changeUserDecisionEvent?.type === "change_user_decision") {
+      expect(changeUserDecisionEvent.userDecision.decision).toBe("approved");
     }
 
     const firstNoopIndex = executed.findIndex((item) => item.name === "tool_noop");
