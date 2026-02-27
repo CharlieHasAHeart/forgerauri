@@ -183,7 +183,11 @@ describe("agent plan replan integration (stub toolchain)", () => {
       registry,
       policy,
       maxTurns: 10,
-      maxToolCallsPerTurn: 4
+      maxToolCallsPerTurn: 4,
+      requestPlanChangeReview: async () => ({
+        decision: "approved",
+        reason: "approved for integration test"
+      })
     });
 
     expect(result.ok).toBe(true);

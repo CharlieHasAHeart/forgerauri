@@ -9,6 +9,7 @@ import { runCmd, type CmdResult } from "../../runner/runCmd.js";
 import type { AgentState } from "../types.js";
 import { runPlanFirstAgent } from "./orchestrator.js";
 import type { HumanReviewFn } from "./executor.js";
+import type { PlanChangeReviewFn } from "./replanner.js";
 
 export const runAgent = async (args: {
   goal: string;
@@ -28,6 +29,7 @@ export const runAgent = async (args: {
   registry?: Record<string, ToolSpec<any>>;
   registryDeps?: Parameters<typeof createToolRegistry>[0];
   humanReview?: HumanReviewFn;
+  requestPlanChangeReview?: PlanChangeReviewFn;
 }): Promise<{ ok: boolean; summary: string; auditPath?: string; patchPaths?: string[]; state: AgentState }> => {
   const provider = args.provider ?? getProviderFromEnv();
   const runCmdImpl = args.runCmdImpl ?? runCmd;
@@ -109,7 +111,8 @@ export const runAgent = async (args: {
     maxToolCallsPerTurn,
     audit,
     policy,
-    humanReview: args.humanReview
+    humanReview: args.humanReview,
+    requestPlanChangeReview: args.requestPlanChangeReview
   });
 
   if (state.status === "done") {

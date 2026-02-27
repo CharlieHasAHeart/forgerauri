@@ -14,7 +14,7 @@ import { setStateError } from "./errors.js";
 import { recordPlanProposed, recordTaskActionPlan } from "./recorder.js";
 import { summarizeState } from "./state.js";
 import { executeActionPlan, type HumanReviewFn } from "./executor.js";
-import { handleReplan } from "./replanner.js";
+import { handleReplan, type PlanChangeReviewFn } from "./replanner.js";
 
 const requiredInput = <T>(value: T | undefined, message: string): T => {
   if (value === undefined) {
@@ -33,8 +33,16 @@ export const runPlanFirstAgent = async (args: {
   audit: AgentTurnAuditCollector;
   policy: AgentPolicy;
   humanReview?: HumanReviewFn;
+  requestPlanChangeReview?: PlanChangeReviewFn;
 }): Promise<void> => {
   const { state, provider, registry, ctx, maxTurns, maxToolCallsPerTurn, audit, policy } = args;
+  const requestPlanChangeReview: PlanChangeReviewFn =
+    args.requestPlanChangeReview ??
+    (async () => ({
+      decision: "denied",
+      reason: "Plan change requires explicit user approval",
+      guidance: "Plan change requires user review. Please approve/deny in the UI and provide guidance on what to do differently."
+    }));
   state.status = "planning";
 
   const planProposal = await proposePlan({
@@ -166,7 +174,8 @@ export const runPlanFirstAgent = async (args: {
           failures: executed.criteria.failures,
           replans,
           audit,
-          turn
+          turn,
+          requestPlanChangeReview
         });
         replans = replanned.replans;
         if (!replanned.ok) {

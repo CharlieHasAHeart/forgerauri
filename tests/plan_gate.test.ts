@@ -20,53 +20,67 @@ const basePolicy = () =>
     maxActionsPerTask: 4,
     maxRetriesPerTask: 2,
     maxReplans: 2,
-    allowedTools: ["tool_bootstrap_project"]
+    allowedTools: ["tool_bootstrap_project", "tool_verify_project", "tool_repair_once"]
   });
 
 describe("plan gate", () => {
-  test("approves reorder_tasks", () => {
+  test("returns needs_user_review for normal change requests", () => {
     const decision = evaluatePlanChange({
       request: baseRequest(),
       policy: basePolicy(),
-      currentTaskCount: 3,
+      currentTaskCount: 3
     });
 
-    expect(decision.decision).toBe("approved");
+    expect(decision.decision).toBe("needs_user_review");
   });
 
-  test("denies relax_acceptance by default", () => {
+  test("denies disallowed tools with guidance", () => {
+    const request = planChangeRequestV2Schema.parse({
+      ...baseRequest(),
+      requested_tools: ["tool_not_allowed"]
+    });
+
+    const decision = evaluatePlanChange({
+      request,
+      policy: basePolicy(),
+      currentTaskCount: 3
+    });
+
+    expect(decision.decision).toBe("denied");
+    expect((decision.guidance ?? "").length).toBeGreaterThan(0);
+  });
+
+  test("denies edit_tech_stack when tech stack is locked", () => {
+    const request = planChangeRequestV2Schema.parse({
+      ...baseRequest(),
+      change_type: "replace_tech",
+      patch: [{ op: "edit_tech_stack", changes: { locked: false } }]
+    });
+
+    const decision = evaluatePlanChange({
+      request,
+      policy: basePolicy(),
+      currentTaskCount: 3
+    });
+
+    expect(decision.decision).toBe("denied");
+    expect((decision.guidance ?? "").length).toBeGreaterThan(0);
+  });
+
+  test("denies edit_acceptance when acceptance is locked", () => {
     const request = planChangeRequestV2Schema.parse({
       ...baseRequest(),
       change_type: "relax_acceptance",
-      reason: "skip tests",
       patch: [{ op: "edit_acceptance", changes: { locked: false } }]
     });
 
     const decision = evaluatePlanChange({
       request,
       policy: basePolicy(),
-      currentTaskCount: 3,
+      currentTaskCount: 3
     });
 
     expect(decision.decision).toBe("denied");
-  });
-
-  test("needs evidence for replace_tech without enough proof", () => {
-    const request = planChangeRequestV2Schema.parse({
-      ...baseRequest(),
-      change_type: "replace_tech",
-      reason: "switch stack",
-      evidence: ["one failure"],
-      impact: { steps_delta: 2, risk: "unknown" },
-      patch: []
-    });
-
-    const decision = evaluatePlanChange({
-      request,
-      policy: basePolicy(),
-      currentTaskCount: 3,
-    });
-
-    expect(decision.decision).toBe("needs_more_evidence");
+    expect((decision.guidance ?? "").length).toBeGreaterThan(0);
   });
 });

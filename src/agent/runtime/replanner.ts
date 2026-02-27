@@ -10,6 +10,15 @@ import { summarizeState } from "./state.js";
 import { setStateError } from "./errors.js";
 import { recordPlanChange } from "./recorder.js";
 import type { AgentTurnAuditCollector } from "./audit.js";
+import { planChangeDecisionSchema, type PlanChangeDecision, type PlanChangeRequestV2 } from "../plan/schema.js";
+
+export type PlanChangeReviewContext = {
+  request: PlanChangeRequestV2;
+  gateDecision: PlanChangeDecision;
+  policySummary?: unknown;
+};
+
+export type PlanChangeReviewFn = (ctx: PlanChangeReviewContext) => Promise<PlanChangeDecision>;
 
 export const handleReplan = async (args: {
   provider: LlmProvider;
@@ -20,6 +29,7 @@ export const handleReplan = async (args: {
   replans: number;
   audit: AgentTurnAuditCollector;
   turn: number;
+  requestPlanChangeReview: PlanChangeReviewFn;
 }): Promise<{ ok: boolean; replans: number }> => {
   const { provider, state, policy } = args;
   const currentPlan = state.planData;
@@ -60,8 +70,6 @@ export const handleReplan = async (args: {
     currentTaskCount: currentPlan.tasks.length
   });
 
-  state.planHistory?.push({ type: "change_decision", decision });
-
   recordPlanChange({
     audit: args.audit,
     turn: args.turn,
@@ -72,16 +80,45 @@ export const handleReplan = async (args: {
     decision
   });
 
-  if (decision.decision !== "approved") {
+  if (decision.decision === "denied") {
+    state.planHistory?.push({ type: "change_decision", decision });
     state.status = "failed";
     state.phase = "FAILED";
     setStateError(
       state,
       "Config",
-      `Plan change ${decision.decision}: ${decision.reason}${
-        decision.required_evidence.length > 0 ? ` (required: ${decision.required_evidence.join(", ")})` : ""
-      }`
+      `Plan change denied: ${decision.reason}. Guidance: ${decision.guidance}`
     );
+    return { ok: false, replans: args.replans };
+  }
+
+  let finalDecision = decision;
+  if (decision.decision === "needs_user_review") {
+    const reviewed = await args.requestPlanChangeReview({
+      request: changeProposal.changeRequest,
+      gateDecision: decision,
+      policySummary: {
+        acceptanceLocked: policy.acceptance.locked,
+        techStackLocked: policy.tech_stack_locked,
+        allowedTools: policy.safety.allowed_tools
+      }
+    });
+    finalDecision = planChangeDecisionSchema.parse(reviewed);
+
+    if (finalDecision.decision === "needs_user_review") {
+      state.status = "failed";
+      state.phase = "FAILED";
+      setStateError(state, "Config", "Plan change review returned needs_user_review; expected approved or denied.");
+      return { ok: false, replans: args.replans };
+    }
+  }
+
+  state.planHistory?.push({ type: "change_decision", decision: finalDecision });
+
+  if (finalDecision.decision === "denied") {
+    state.status = "failed";
+    state.phase = "FAILED";
+    setStateError(state, "Config", `Plan change denied by user review: ${finalDecision.reason}. Guidance: ${finalDecision.guidance}`);
     return { ok: false, replans: args.replans };
   }
 
