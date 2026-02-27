@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import { contractDesignV1Schema, type ContractDesignV1 } from "../../../contract/schema.js";
+import { contractDesignV1Schema, type ContractDesignV1 } from "../../../design/contract/schema.js";
 import { toAppSlug } from "../../../../generator/templates.js";
 import type { ToolPackage } from "../../types.js";
 

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { contractDesignV1Schema, type ContractDesignV1 } from "../../../contract/schema.js";
+import { contractDesignV1Schema, type ContractDesignV1 } from "../../../design/contract/schema.js";
 import type { LlmProvider } from "../../../../llm/provider.js";
 import type { ToolPackage } from "../../types.js";
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { runMaterializeContract } from "../src/agent/tools/core/materialize_contract/index.js";
-import type { ContractDesignV1 } from "../src/agent/contract/schema.js";
+import type { ContractDesignV1 } from "../src/agent/design/contract/schema.js";
 
 const minimalContract: ContractDesignV1 = {
   version: "v1",
