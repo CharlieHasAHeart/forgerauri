@@ -244,44 +244,17 @@ export const gateResultSchema = z.object({
 
 export type GateResult = z.infer<typeof gateResultSchema>;
 
-export const planChangeReviewOutcomeSchema = z.object({
-  decision: z.enum(["approved", "denied"]),
-  reason: z.string().min(1),
-  guidance: z.string().min(1).optional(),
-  patch: z.array(planPatchOperationSchema).optional()
-}).superRefine((value, ctx) => {
-  if (value.decision === "denied") {
-    if (!value.guidance || value.guidance.trim().length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "guidance is required when decision is denied",
-        path: ["guidance"]
-      });
-    }
-    if (value.patch !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "patch must not be provided when decision is denied",
-        path: ["patch"]
-      });
-    }
-    return;
-  }
-
-  if (value.guidance !== undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "guidance must not be provided when decision is approved",
-      path: ["guidance"]
-    });
-  }
-  if (!value.patch || value.patch.length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "patch is required when decision is approved",
-      path: ["patch"]
-    });
-  }
-});
+export const planChangeReviewOutcomeSchema = z.discriminatedUnion("decision", [
+  z.object({
+    decision: z.literal("denied"),
+    reason: z.string().min(1),
+    guidance: z.string().min(1)
+  }),
+  z.object({
+    decision: z.literal("approved"),
+    reason: z.string().min(1),
+    patch: z.array(planPatchOperationSchema).min(1)
+  })
+]);
 
 export type PlanChangeReviewOutcome = z.infer<typeof planChangeReviewOutcomeSchema>;

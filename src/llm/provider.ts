@@ -39,7 +39,7 @@ export interface LlmProvider {
     messages: LlmMessage[],
     schema: z.ZodType<T>,
     opts?: LlmCallOptions
-  ): Promise<{ data: T; raw: string; attempts: number }>;
+  ): Promise<{ data: T; raw: string; attempts: number; responseId?: string }>;
 }
 
 const extractJsonObject = (raw: string): string => {
@@ -78,19 +78,22 @@ export abstract class BaseLlmProvider implements LlmProvider {
     messages: LlmMessage[],
     schema: z.ZodType<T>,
     opts?: LlmCallOptions
-  ): Promise<{ data: T; raw: string; attempts: number }> {
+  ): Promise<{ data: T; raw: string; attempts: number; responseId?: string }> {
     const maxAttempts = 3;
     let currentMessages = [...messages];
     let lastRaw = "";
+    let lastResponseId: string | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      lastRaw = await this.completeText(currentMessages, opts);
+      const response = await this.complete(currentMessages, opts);
+      lastRaw = response.text;
+      lastResponseId = response.responseId;
 
       try {
         const jsonText = extractJsonObject(lastRaw);
         const parsed = JSON.parse(jsonText) as unknown;
         const data = schema.parse(parsed);
-        return { data, raw: lastRaw, attempts: attempt };
+        return { data, raw: lastRaw, attempts: attempt, responseId: lastResponseId };
       } catch (error) {
         if (attempt === maxAttempts) {
           if (error instanceof z.ZodError) {

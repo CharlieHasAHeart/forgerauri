@@ -126,6 +126,7 @@ export const handleReplan = async (args: {
         ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
         : undefined
   });
+  state.lastResponseId = interpreted.responseId ?? state.lastResponseId;
   state.planHistory?.push({ type: "change_review_outcome", outcome: interpreted.outcome });
 
   if (interpreted.outcome.decision === "denied") {

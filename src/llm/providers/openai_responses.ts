@@ -93,7 +93,7 @@ export class OpenAIResponsesProvider extends BaseLlmProvider {
     messages: LlmMessage[],
     schema: z.ZodType<T>,
     opts?: LlmCallOptions
-  ): Promise<{ data: T; raw: string; attempts: number }> {
+  ): Promise<{ data: T; raw: string; attempts: number; responseId?: string }> {
     if (!this.adapter.caps.supportsTextFormatJsonSchema) {
       return super.completeJSON(messages, schema, opts);
     }
@@ -113,7 +113,7 @@ export class OpenAIResponsesProvider extends BaseLlmProvider {
 
       const decoded = JSON.parse(parsed.text) as unknown;
       const data = schema.parse(decoded);
-      return { data, raw: parsed.text, attempts: 1 };
+      return { data, raw: parsed.text, attempts: 1, responseId: parsed.responseId };
     } catch (error) {
       if (error instanceof OpenAIRefusalError) {
         throw error;

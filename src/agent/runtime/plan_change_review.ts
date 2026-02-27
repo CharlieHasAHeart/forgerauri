@@ -54,6 +54,7 @@ export const interpretPlanChangeReview = async (args: {
   return {
     outcome: response.data,
     attempts: response.attempts,
-    raw: response.raw
+    raw: response.raw,
+    responseId: response.responseId
   };
 };
