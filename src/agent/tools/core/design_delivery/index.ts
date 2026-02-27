@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { LlmProvider } from "../../../../llm/provider.js";
-import { contractDesignV1Schema } from "../../../design/contract/schema.js";
+import { contractForDeliveryV1Schema } from "../../../design/contract/views.js";
 import { deliveryDesignV1Schema, type DeliveryDesignV1 } from "../../../design/delivery/schema.js";
 import type { ToolPackage } from "../../types.js";
 
 const inputSchema = z.object({
   goal: z.string().min(1),
-  contract: contractDesignV1Schema,
+  contract: contractForDeliveryV1Schema,
   projectRoot: z.string().min(1).optional()
 });
 
@@ -17,7 +17,7 @@ const outputSchema = z.object({
 
 export const runDesignDelivery = async (args: {
   goal: string;
-  contract: z.infer<typeof contractDesignV1Schema>;
+  contract: z.infer<typeof contractForDeliveryV1Schema>;
   projectRoot?: string;
   provider: LlmProvider;
 }): Promise<{ delivery: DeliveryDesignV1; attempts: number; raw: string }> => {

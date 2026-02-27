@@ -1,13 +1,13 @@
 import { z } from "zod";
 import type { LlmProvider } from "../../../../llm/provider.js";
-import { contractDesignV1Schema } from "../../../design/contract/schema.js";
+import { contractForImplementationV1Schema } from "../../../design/contract/views.js";
 import { implementationDesignV1Schema, type ImplementationDesignV1 } from "../../../design/implementation/schema.js";
 import { uxDesignV1Schema } from "../../../design/ux/schema.js";
 import type { ToolPackage } from "../../types.js";
 
 const inputSchema = z.object({
   goal: z.string().min(1),
-  contract: contractDesignV1Schema,
+  contract: contractForImplementationV1Schema,
   ux: uxDesignV1Schema.optional(),
   projectRoot: z.string().min(1).optional()
 });
@@ -19,7 +19,7 @@ const outputSchema = z.object({
 
 export const runDesignImplementation = async (args: {
   goal: string;
-  contract: z.infer<typeof contractDesignV1Schema>;
+  contract: z.infer<typeof contractForImplementationV1Schema>;
   ux?: z.infer<typeof uxDesignV1Schema>;
   projectRoot?: string;
   provider: LlmProvider;

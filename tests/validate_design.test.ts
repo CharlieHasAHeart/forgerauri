@@ -24,9 +24,6 @@ const baseContract = {
       }
     ],
     migrations: { strategy: "single" }
-  },
-  acceptance: {
-    mustPass: ["pnpm_build"]
   }
 };
 
@@ -171,5 +168,51 @@ describe("tool_validate_design", () => {
     const data = result.data as { ok: boolean; errors: Array<{ code: string }> };
     expect(data.ok).toBe(false);
     expect(data.errors.some((error) => error.code === "DELIVERY_UNKNOWN_GATE")).toBe(true);
+  });
+
+  test("passes when contract acceptance and delivery verifyPolicy are consistent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgetauri-validate-"));
+    const consistentContract = {
+      ...baseContract,
+      acceptance: {
+        mustPass: ["pnpm_build", "cargo_check"],
+        smokeCommands: ["lint_config"]
+      }
+    };
+    const consistentDelivery = {
+      ...baseDelivery,
+      verifyPolicy: {
+        ...baseDelivery.verifyPolicy,
+        smokeCommands: ["lint_config"]
+      }
+    };
+    await writeArtifacts(root, { contract: consistentContract, delivery: consistentDelivery });
+
+    const result = await runValidateDesign({ projectRoot: root });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  test("fails when contract acceptance conflicts with delivery verifyPolicy", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgetauri-validate-"));
+    const conflictContract = {
+      ...baseContract,
+      acceptance: {
+        mustPass: ["pnpm_build"],
+        smokeCommands: ["lint_config"]
+      }
+    };
+    const conflictDelivery = {
+      ...baseDelivery,
+      verifyPolicy: {
+        ...baseDelivery.verifyPolicy,
+        smokeCommands: ["other_command"]
+      }
+    };
+    await writeArtifacts(root, { contract: conflictContract, delivery: conflictDelivery });
+
+    const result = await runValidateDesign({ projectRoot: root });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.code === "CONTRACT_DELIVERY_POLICY_CONFLICT")).toBe(true);
   });
 });

@@ -2,17 +2,17 @@ import { z } from "zod";
 
 const snakeCase = /^[a-z][a-z0-9_]*$/;
 
-const ioTypeSchema = z.enum(["string", "int", "float", "boolean", "json"]);
-const sideEffectSchema = z.enum(["db_read", "db_write", "fs_read", "fs_write", "network"]);
+export const ioTypeSchema = z.enum(["string", "int", "float", "boolean", "json"]);
+export const sideEffectSchema = z.enum(["db_read", "db_write", "fs_read", "fs_write", "network"]);
 
-const commandFieldSchema = z.object({
+export const commandFieldSchema = z.object({
   name: z.string().regex(snakeCase, "must be snake_case"),
   type: ioTypeSchema,
   optional: z.boolean().optional(),
   description: z.string().optional()
 });
 
-const commandSchema = z.object({
+export const commandSchema = z.object({
   name: z.string().regex(snakeCase, "must be snake_case"),
   purpose: z.string().min(1),
   inputs: z.array(commandFieldSchema),
@@ -22,7 +22,7 @@ const commandSchema = z.object({
   idempotent: z.boolean().optional()
 });
 
-const columnSchema = z.object({
+export const columnSchema = z.object({
   name: z.string().regex(snakeCase, "must be snake_case"),
   type: z.enum(["text", "integer", "real", "blob", "json"]),
   nullable: z.boolean().optional(),
@@ -30,7 +30,7 @@ const columnSchema = z.object({
   default: z.string().optional()
 });
 
-const tableSchema = z.object({
+export const tableSchema = z.object({
   name: z.string().regex(snakeCase, "must be snake_case"),
   columns: z.array(columnSchema).min(1),
   indices: z
@@ -43,6 +43,11 @@ const tableSchema = z.object({
     )
     .optional(),
   description: z.string().optional()
+});
+
+export const contractAcceptanceSchema = z.object({
+  mustPass: z.array(z.enum(["pnpm_build", "cargo_check", "tauri_help", "tauri_build"])).min(1),
+  smokeCommands: z.array(z.string().regex(snakeCase, "must be snake_case")).optional()
 });
 
 export const contractDesignV1Schema = z.object({
@@ -58,10 +63,9 @@ export const contractDesignV1Schema = z.object({
       strategy: z.enum(["single", "versioned"])
     })
   }),
-  acceptance: z.object({
-    mustPass: z.array(z.enum(["pnpm_build", "cargo_check", "tauri_help", "tauri_build"])).min(1),
-    smokeCommands: z.array(z.string().regex(snakeCase, "must be snake_case")).optional()
-  })
+  // Delivery verifyPolicy is the primary source for gates/smoke.
+  // Keep this optional for backward compatibility with existing contracts.
+  acceptance: contractAcceptanceSchema.optional()
 });
 
 export type ContractDesignV1 = z.infer<typeof contractDesignV1Schema>;

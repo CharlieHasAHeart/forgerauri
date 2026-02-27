@@ -3,7 +3,7 @@ import { isAbsolute } from "node:path";
 import { z } from "zod";
 import type { ContractDesignV1 } from "../../../design/contract/schema.js";
 import { contractDesignV1Schema } from "../../../design/contract/schema.js";
-import type { DeliveryDesignV1 } from "../../../design/delivery/schema.js";
+import { deliveryDesignV1Schema, type DeliveryDesignV1 } from "../../../design/delivery/schema.js";
 import type { ImplementationDesignV1 } from "../../../design/implementation/schema.js";
 import { implementationDesignV1Schema } from "../../../design/implementation/schema.js";
 import type { UXDesignV1 } from "../../../design/ux/schema.js";
@@ -11,38 +11,6 @@ import { uxDesignV1Schema } from "../../../design/ux/schema.js";
 import type { ToolPackage } from "../../types.js";
 
 const allowedGates = new Set(["pnpm_install_if_needed", "pnpm_build", "cargo_check", "tauri_help", "tauri_build"]);
-
-const deliveryValidationSchema = z.object({
-  version: z.literal("v1"),
-  verifyPolicy: z.object({
-    levelDefault: z.literal("full"),
-    gates: z.array(z.string()),
-    smokeCommands: z.array(z.string()).optional()
-  }),
-  preflight: z.object({
-    checks: z.array(
-      z.object({
-        id: z.string(),
-        description: z.string(),
-        cmd: z.string().optional(),
-        required: z.boolean()
-      })
-    )
-  }),
-  assets: z.object({
-    icons: z.object({
-      required: z.boolean(),
-      paths: z.array(z.string())
-    }),
-    capabilities: z
-      .object({
-        required: z.boolean()
-      })
-      .optional()
-  })
-});
-
-type DeliveryValidation = z.infer<typeof deliveryValidationSchema>;
 
 type ValidationError = {
   code: string;
@@ -135,7 +103,7 @@ const validateImplementationTables = (contract: ContractDesignV1, impl: Implemen
   return errors;
 };
 
-const validateDeliveryGates = (delivery: DeliveryValidation): ValidationError[] => {
+const validateDeliveryGates = (delivery: DeliveryDesignV1): ValidationError[] => {
   const errors: ValidationError[] = [];
 
   delivery.verifyPolicy.gates.forEach((gate, gateIndex) => {
@@ -151,7 +119,7 @@ const validateDeliveryGates = (delivery: DeliveryValidation): ValidationError[] 
   return errors;
 };
 
-const validateDeliveryIcons = (delivery: DeliveryValidation): ValidationError[] => {
+const validateDeliveryIcons = (delivery: DeliveryDesignV1): ValidationError[] => {
   const errors: ValidationError[] = [];
   const { icons } = delivery.assets;
 
@@ -188,6 +156,42 @@ const validateDeliveryIcons = (delivery: DeliveryValidation): ValidationError[] 
   return errors;
 };
 
+const normalizeSmokeCommands = (commands: string[] | undefined): string[] => [...(commands ?? [])].sort((a, b) => a.localeCompare(b));
+
+const normalizeContractMustPassToDeliveryGates = (mustPass: NonNullable<ContractDesignV1["acceptance"]>["mustPass"]): string[] =>
+  [...mustPass].sort((a, b) => a.localeCompare(b));
+
+const validateContractDeliveryConsistency = (contract: ContractDesignV1, delivery: DeliveryDesignV1): ValidationError[] => {
+  const errors: ValidationError[] = [];
+  const acceptance = contract.acceptance;
+  if (!acceptance) return errors;
+
+  const contractGates = normalizeContractMustPassToDeliveryGates(acceptance.mustPass);
+  const deliveryGates = [...delivery.verifyPolicy.gates]
+    .filter((gate) => gate !== "pnpm_install_if_needed")
+    .sort((a, b) => a.localeCompare(b));
+
+  if (JSON.stringify(contractGates) !== JSON.stringify(deliveryGates)) {
+    errors.push({
+      code: "CONTRACT_DELIVERY_POLICY_CONFLICT",
+      message: `contract.acceptance.mustPass (${contractGates.join(",")}) conflicts with delivery.verifyPolicy.gates (${deliveryGates.join(",")})`,
+      path: "contract.acceptance.mustPass"
+    });
+  }
+
+  const contractSmoke = normalizeSmokeCommands(acceptance.smokeCommands);
+  const deliverySmoke = normalizeSmokeCommands(delivery.verifyPolicy.smokeCommands);
+  if (contractSmoke.length > 0 && deliverySmoke.length > 0 && JSON.stringify(contractSmoke) !== JSON.stringify(deliverySmoke)) {
+    errors.push({
+      code: "CONTRACT_DELIVERY_POLICY_CONFLICT",
+      message: `contract.acceptance.smokeCommands (${contractSmoke.join(",")}) conflicts with delivery.verifyPolicy.smokeCommands (${deliverySmoke.join(",")})`,
+      path: "contract.acceptance.smokeCommands"
+    });
+  }
+
+  return errors;
+};
+
 const loadJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
 
 const parseContract = (value: unknown): { value?: ContractDesignV1; errors: ValidationError[] } => {
@@ -208,10 +212,25 @@ const parseImplementation = (value: unknown): { value?: ImplementationDesignV1; 
   return { errors: summarizeZodIssues(parsed.error) };
 };
 
-const parseDelivery = (value: unknown): { value?: DeliveryValidation; errors: ValidationError[] } => {
-  const parsed = deliveryValidationSchema.safeParse(value);
+const parseDelivery = (value: unknown): { value?: DeliveryDesignV1; errors: ValidationError[] } => {
+  const parsed = deliveryDesignV1Schema.safeParse(value);
   if (parsed.success) return { value: parsed.data, errors: [] };
-  return { errors: summarizeZodIssues(parsed.error) };
+  const mapped = parsed.error.issues.map((issue) => {
+    const path = issue.path.join(".") || "<root>";
+    if (path.startsWith("verifyPolicy.gates.")) {
+      return {
+        code: "DELIVERY_UNKNOWN_GATE",
+        message: issue.message,
+        path
+      };
+    }
+    return {
+      code: "DESIGN_SCHEMA_INVALID",
+      message: issue.message,
+      path
+    };
+  });
+  return { errors: mapped };
 };
 
 export const runValidateDesign = async (args: {
@@ -249,6 +268,10 @@ export const runValidateDesign = async (args: {
   if (deliveryParsed.value) {
     errors.push(...validateDeliveryGates(deliveryParsed.value));
     errors.push(...validateDeliveryIcons(deliveryParsed.value));
+  }
+
+  if (contractParsed.value && deliveryParsed.value) {
+    errors.push(...validateContractDeliveryConsistency(contractParsed.value, deliveryParsed.value));
   }
 
   return {
@@ -313,6 +336,7 @@ export const toolPackage: ToolPackage<z.infer<typeof inputSchema>, z.infer<typeo
 
 export {
   allowedGates,
+  validateContractDeliveryConsistency,
   validateDeliveryGates,
   validateDeliveryIcons,
   validateImplementationTables,
