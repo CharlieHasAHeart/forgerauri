@@ -55,6 +55,11 @@ describe("replanner", () => {
         impact: { steps_delta: 0, risk: "low" },
         requested_tools: [],
         patch: [{ op: "edit_task", task_id: "t1", changes: { description: "new" } }]
+      }),
+      JSON.stringify({
+        decision: "denied",
+        reason: "not approved",
+        guidance: "Please keep current acceptance and fix task logic."
       })
     ]);
 
@@ -76,11 +81,7 @@ describe("replanner", () => {
       replans: 0,
       audit: new AgentTurnAuditCollector("goal"),
       turn: 1,
-      requestPlanChangeReview: async () => ({
-        decision: "denied",
-        reason: "not approved",
-        guidance: "Please keep current acceptance and fix task logic."
-      })
+      requestPlanChangeReview: async () => "I do not approve this change. Keep current acceptance and fix task logic."
     });
 
     expect(result.ok).toBe(false);
@@ -96,6 +97,22 @@ describe("replanner", () => {
         evidence: ["failing"],
         impact: { steps_delta: 1, risk: "low" },
         requested_tools: [],
+        patch: [
+          {
+            op: "add_task",
+            task: {
+              id: "t2",
+              title: "extra",
+              description: "extra",
+              dependencies: ["t1"],
+              success_criteria: [{ type: "tool_result", tool_name: "tool_noop", expected_ok: true }]
+            }
+          }
+        ]
+      }),
+      JSON.stringify({
+        decision: "approved",
+        reason: "looks good",
         patch: [
           {
             op: "add_task",
@@ -129,10 +146,7 @@ describe("replanner", () => {
       replans: 0,
       audit: new AgentTurnAuditCollector("goal"),
       turn: 1,
-      requestPlanChangeReview: async () => ({
-        decision: "approved",
-        reason: "looks good"
-      })
+      requestPlanChangeReview: async () => "Approve this plan change and apply the proposed patch."
     });
 
     expect(result.ok).toBe(true);

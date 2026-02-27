@@ -3,7 +3,7 @@ import type { ContractDesignV1 } from "./design/contract/schema.js";
 import type { DeliveryDesignV1 } from "./design/delivery/schema.js";
 import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
 import type { UXDesignV1 } from "./design/ux/schema.js";
-import type { GateResult, PlanChangeRequestV2, PlanV1, UserDecision } from "./plan/schema.js";
+import type { GateResult, PlanChangeRequestV2, PlanChangeReviewOutcome, PlanV1 } from "./plan/schema.js";
 
 /**
  * @deprecated Legacy terminal alias only. Use AgentStatus for plan-first runtime state.
@@ -97,7 +97,8 @@ export type AgentState = {
     | { type: "initial"; version: number; plan: PlanV1 }
     | { type: "change_request"; request: PlanChangeRequestV2 }
     | { type: "change_gate_result"; gateResult: GateResult }
-    | { type: "change_user_decision"; userDecision: UserDecision }
+    | { type: "change_user_review_text"; text: string }
+    | { type: "change_review_outcome"; outcome: PlanChangeReviewOutcome }
   >;
 };
 

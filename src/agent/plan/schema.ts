@@ -244,11 +244,11 @@ export const gateResultSchema = z.object({
 
 export type GateResult = z.infer<typeof gateResultSchema>;
 
-export const userDecisionSchema = z.object({
+export const planChangeReviewOutcomeSchema = z.object({
   decision: z.enum(["approved", "denied"]),
   reason: z.string().min(1),
   guidance: z.string().min(1).optional(),
-  suggested_patch: z.array(planPatchOperationSchema).optional()
+  patch: z.array(planPatchOperationSchema).optional()
 }).superRefine((value, ctx) => {
   if (value.decision === "denied") {
     if (!value.guidance || value.guidance.trim().length === 0) {
@@ -256,6 +256,13 @@ export const userDecisionSchema = z.object({
         code: z.ZodIssueCode.custom,
         message: "guidance is required when decision is denied",
         path: ["guidance"]
+      });
+    }
+    if (value.patch !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "patch must not be provided when decision is denied",
+        path: ["patch"]
       });
     }
     return;
@@ -268,13 +275,13 @@ export const userDecisionSchema = z.object({
       path: ["guidance"]
     });
   }
-  if (value.suggested_patch !== undefined) {
+  if (!value.patch || value.patch.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "suggested_patch must not be provided when decision is approved",
-      path: ["suggested_patch"]
+      message: "patch is required when decision is approved",
+      path: ["patch"]
     });
   }
 });
 
-export type UserDecision = z.infer<typeof userDecisionSchema>;
+export type PlanChangeReviewOutcome = z.infer<typeof planChangeReviewOutcomeSchema>;

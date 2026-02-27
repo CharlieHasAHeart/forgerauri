@@ -157,6 +157,20 @@ describe("agent plan replan integration (stub toolchain)", () => {
         ]
       }),
       JSON.stringify({
+        decision: "approved",
+        reason: "approved by user text",
+        patch: [
+          {
+            op: "edit_task",
+            task_id: "t2",
+            changes: {
+              description: "write b and check tool_result",
+              success_criteria: [{ type: "tool_result", tool_name: "tool_write_file", expected_ok: true }]
+            }
+          }
+        ]
+      }),
+      JSON.stringify({
         version: "v1",
         task_id: "t2",
         rationale: "after patch write b",
@@ -184,10 +198,7 @@ describe("agent plan replan integration (stub toolchain)", () => {
       policy,
       maxTurns: 10,
       maxToolCallsPerTurn: 4,
-      requestPlanChangeReview: async () => ({
-        decision: "approved",
-        reason: "approved for integration test"
-      })
+      requestPlanChangeReview: async () => "Approve. Apply the proposed patch."
     });
 
     expect(result.ok).toBe(true);
@@ -197,12 +208,14 @@ describe("agent plan replan integration (stub toolchain)", () => {
 
     const changeRequestEvent = result.state.planHistory?.find((item) => item.type === "change_request");
     const changeGateEvent = result.state.planHistory?.find((item) => item.type === "change_gate_result");
-    const changeUserDecisionEvent = result.state.planHistory?.find((item) => item.type === "change_user_decision");
+    const changeUserTextEvent = result.state.planHistory?.find((item) => item.type === "change_user_review_text");
+    const changeOutcomeEvent = result.state.planHistory?.find((item) => item.type === "change_review_outcome");
     expect(changeRequestEvent).toBeTruthy();
     expect(changeGateEvent).toBeTruthy();
-    expect(changeUserDecisionEvent).toBeTruthy();
-    if (changeUserDecisionEvent?.type === "change_user_decision") {
-      expect(changeUserDecisionEvent.userDecision.decision).toBe("approved");
+    expect(changeUserTextEvent).toBeTruthy();
+    expect(changeOutcomeEvent).toBeTruthy();
+    if (changeOutcomeEvent?.type === "change_review_outcome") {
+      expect(changeOutcomeEvent.outcome.decision).toBe("approved");
     }
 
     const firstNoopIndex = executed.findIndex((item) => item.name === "tool_noop");

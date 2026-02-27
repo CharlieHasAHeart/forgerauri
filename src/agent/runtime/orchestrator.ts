@@ -38,11 +38,8 @@ export const runPlanFirstAgent = async (args: {
   const { state, provider, registry, ctx, maxTurns, maxToolCallsPerTurn, audit, policy } = args;
   const requestPlanChangeReview: PlanChangeReviewFn =
     args.requestPlanChangeReview ??
-    (async () => ({
-      decision: "denied",
-      reason: "Plan change requires explicit user approval",
-      guidance: "Plan change requires user review. Please approve/deny in the UI and provide guidance on what to do differently."
-    }));
+    (async () =>
+      "I do not approve this plan change. Please propose a plan change that fixes the failure without relaxing acceptance or changing tech stack.");
   state.status = "planning";
 
   const planProposal = await proposePlan({

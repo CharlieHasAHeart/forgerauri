@@ -10,15 +10,21 @@ import { summarizeState } from "./state.js";
 import { setStateError } from "./errors.js";
 import { recordPlanChange } from "./recorder.js";
 import type { AgentTurnAuditCollector } from "./audit.js";
-import { userDecisionSchema, type GateResult, type PlanChangeRequestV2, type UserDecision } from "../plan/schema.js";
+import type { GateResult, PlanChangeRequestV2 } from "../plan/schema.js";
+import { interpretPlanChangeReview } from "./plan_change_review.js";
 
 export type PlanChangeReviewContext = {
   request: PlanChangeRequestV2;
   gateResult: GateResult;
-  policySummary?: unknown;
+  policySummary: {
+    acceptanceLocked: boolean;
+    techStackLocked: boolean;
+    allowedTools: string[];
+  };
+  promptHint?: string;
 };
 
-export type PlanChangeReviewFn = (ctx: PlanChangeReviewContext) => Promise<UserDecision>;
+export type PlanChangeReviewFn = (ctx: PlanChangeReviewContext) => Promise<string>;
 
 export const handleReplan = async (args: {
   provider: LlmProvider;
@@ -93,22 +99,43 @@ export const handleReplan = async (args: {
     return { ok: false, replans: args.replans };
   }
 
-  const reviewed = await args.requestPlanChangeReview({
+  const policySummary = {
+    acceptanceLocked: policy.acceptance.locked,
+    techStackLocked: policy.tech_stack_locked,
+    allowedTools: policy.safety.allowed_tools
+  };
+
+  const userText = await args.requestPlanChangeReview({
     request: changeProposal.changeRequest,
     gateResult,
-    policySummary: {
-      acceptanceLocked: policy.acceptance.locked,
-      techStackLocked: policy.tech_stack_locked,
-      allowedTools: policy.safety.allowed_tools
-    }
+    policySummary,
+    promptHint: "Use natural language: approve/reject this plan change. If rejecting, provide specific fix direction."
   });
-  const finalDecision = userDecisionSchema.parse(reviewed);
-  state.planHistory?.push({ type: "change_user_decision", userDecision: finalDecision });
+  state.planHistory?.push({ type: "change_user_review_text", text: userText });
 
-  if (finalDecision.decision === "denied") {
+  const interpreted = await interpretPlanChangeReview({
+    provider,
+    request: changeProposal.changeRequest,
+    gateResult,
+    policySummary,
+    userInput: userText,
+    previousResponseId: state.lastResponseId,
+    truncation: state.flags.truncation,
+    contextManagement:
+      typeof state.flags.compactionThreshold === "number"
+        ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
+        : undefined
+  });
+  state.planHistory?.push({ type: "change_review_outcome", outcome: interpreted.outcome });
+
+  if (interpreted.outcome.decision === "denied") {
     state.status = "failed";
     state.phase = "FAILED";
-    setStateError(state, "Config", `Plan change denied by user review: ${finalDecision.reason}. Guidance: ${finalDecision.guidance}`);
+    setStateError(
+      state,
+      "Config",
+      `Plan change denied by user review: ${interpreted.outcome.reason}. Guidance: ${interpreted.outcome.guidance}`
+    );
     return { ok: false, replans: args.replans };
   }
 
@@ -119,7 +146,18 @@ export const handleReplan = async (args: {
     return { ok: false, replans: args.replans };
   }
 
-  state.planData = applyPlanChangePatch(currentPlan, changeProposal.changeRequest);
+  if (!interpreted.outcome.patch || interpreted.outcome.patch.length === 0) {
+    state.status = "failed";
+    state.phase = "FAILED";
+    setStateError(state, "Config", "Approved plan review outcome did not provide a patch.");
+    return { ok: false, replans: args.replans };
+  }
+
+  const approvedPatchRequest: PlanChangeRequestV2 = {
+    ...changeProposal.changeRequest,
+    patch: interpreted.outcome.patch
+  };
+  state.planData = applyPlanChangePatch(currentPlan, approvedPatchRequest);
   state.planVersion = (state.planVersion ?? 1) + 1;
   return { ok: true, replans: args.replans + 1 };
 };
