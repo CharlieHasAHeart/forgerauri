@@ -59,9 +59,8 @@ export const contractForImplementationV1Schema = z.object({
 export const contractForDeliveryV1Schema = z.object({
   version: z.literal("v1"),
   app: appSchema,
-  commands: z.array(commandSchema.pick({ name: true })),
-  acceptance: contractAcceptanceSchema.optional()
-});
+  commands: z.array(commandSchema.pick({ name: true }))
+}).strict();
 
 export type CoreContractV1 = z.infer<typeof contractDesignV1CoreSchema>;
 export type ContractForUxV1 = z.infer<typeof contractForUxV1Schema>;

@@ -18,6 +18,9 @@ type ValidationError = {
   path?: string;
 };
 
+const deliveryCompatWarningCode = "DELIVERY_MISSING_USING_CONTRACT_ACCEPTANCE";
+type DeliveryGate = DeliveryDesignV1["verifyPolicy"]["gates"][number];
+
 const inputSchema = z.object({
   projectRoot: z.string().min(1),
   contract: z.unknown().optional(),
@@ -193,6 +196,14 @@ const validateContractDeliveryConsistency = (contract: ContractDesignV1, deliver
 };
 
 const loadJson = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
+const loadJsonOptional = async (path: string): Promise<unknown | undefined> => {
+  try {
+    return await loadJson(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return undefined;
+    throw error;
+  }
+};
 
 const parseContract = (value: unknown): { value?: ContractDesignV1; errors: ValidationError[] } => {
   const parsed = contractDesignV1Schema.safeParse(value);
@@ -213,6 +224,9 @@ const parseImplementation = (value: unknown): { value?: ImplementationDesignV1; 
 };
 
 const parseDelivery = (value: unknown): { value?: DeliveryDesignV1; errors: ValidationError[] } => {
+  if (value === undefined) {
+    return { value: undefined, errors: [] };
+  }
   const parsed = deliveryDesignV1Schema.safeParse(value);
   if (parsed.success) return { value: parsed.data, errors: [] };
   const mapped = parsed.error.issues.map((issue) => {
@@ -233,6 +247,50 @@ const parseDelivery = (value: unknown): { value?: DeliveryDesignV1; errors: Vali
   return { errors: mapped };
 };
 
+const normalizeDeliveryFromContractAcceptance = (
+  contract: ContractDesignV1,
+  delivery: DeliveryDesignV1 | undefined
+): { delivery?: DeliveryDesignV1; compatErrors: ValidationError[] } => {
+  if (delivery) {
+    return { delivery, compatErrors: [] };
+  }
+
+  if (!contract.acceptance) {
+    return { delivery: undefined, compatErrors: [] };
+  }
+
+  const gates = Array.from(new Set<DeliveryGate>(["pnpm_install_if_needed", ...contract.acceptance.mustPass]));
+  const derived: DeliveryDesignV1 = {
+    version: "v1",
+    verifyPolicy: {
+      levelDefault: "full",
+      gates,
+      smokeCommands: contract.acceptance.smokeCommands
+    },
+    preflight: {
+      checks: []
+    },
+    assets: {
+      icons: {
+        required: false,
+        paths: []
+      }
+    }
+  };
+
+  return {
+    delivery: derived,
+    compatErrors: [
+      {
+        code: deliveryCompatWarningCode,
+        message:
+          "delivery design missing; derived verifyPolicy from contract.acceptance for backward compatibility. Prefer generating delivery design.",
+        path: "delivery.verifyPolicy"
+      }
+    ]
+  };
+};
+
 export const runValidateDesign = async (args: {
   projectRoot: string;
   contract?: unknown;
@@ -243,18 +301,22 @@ export const runValidateDesign = async (args: {
   const contractRaw = args.contract ?? (await loadJson(`${args.projectRoot}/forgetauri.contract.json`));
   const uxRaw = args.ux ?? (await loadJson(`${args.projectRoot}/src/lib/design/ux.json`));
   const implementationRaw = args.implementation ?? (await loadJson(`${args.projectRoot}/src/lib/design/implementation.json`));
-  const deliveryRaw = args.delivery ?? (await loadJson(`${args.projectRoot}/src/lib/design/delivery.json`));
+  const deliveryRaw = args.delivery ?? (await loadJsonOptional(`${args.projectRoot}/src/lib/design/delivery.json`));
 
   const contractParsed = parseContract(contractRaw);
   const uxParsed = parseUx(uxRaw);
   const implementationParsed = parseImplementation(implementationRaw);
   const deliveryParsed = parseDelivery(deliveryRaw);
+  const normalizedDelivery = contractParsed.value
+    ? normalizeDeliveryFromContractAcceptance(contractParsed.value, deliveryParsed.value)
+    : { delivery: deliveryParsed.value, compatErrors: [] as ValidationError[] };
 
   const errors: ValidationError[] = [
     ...contractParsed.errors,
     ...uxParsed.errors,
     ...implementationParsed.errors,
-    ...deliveryParsed.errors
+    ...deliveryParsed.errors,
+    ...normalizedDelivery.compatErrors
   ];
 
   if (contractParsed.value && uxParsed.value) {
@@ -265,19 +327,34 @@ export const runValidateDesign = async (args: {
     errors.push(...validateImplementationTables(contractParsed.value, implementationParsed.value));
   }
 
-  if (deliveryParsed.value) {
-    errors.push(...validateDeliveryGates(deliveryParsed.value));
-    errors.push(...validateDeliveryIcons(deliveryParsed.value));
+  if (normalizedDelivery.delivery) {
+    errors.push(...validateDeliveryGates(normalizedDelivery.delivery));
+    errors.push(...validateDeliveryIcons(normalizedDelivery.delivery));
   }
 
-  if (contractParsed.value && deliveryParsed.value) {
-    errors.push(...validateContractDeliveryConsistency(contractParsed.value, deliveryParsed.value));
+  if (contractParsed.value && normalizedDelivery.delivery) {
+    errors.push(...validateContractDeliveryConsistency(contractParsed.value, normalizedDelivery.delivery));
   }
+
+  if (!normalizedDelivery.delivery) {
+    errors.push({
+      code: "DESIGN_SCHEMA_INVALID",
+      message: "delivery design missing and contract.acceptance unavailable for compatibility fallback",
+      path: "delivery"
+    });
+  }
+
+  const blockingErrors = errors.filter((error) => error.code !== deliveryCompatWarningCode);
 
   return {
-    ok: errors.length === 0,
+    ok: blockingErrors.length === 0,
     errors,
-    summary: errors.length === 0 ? "Design validation passed" : `Design validation failed: ${errors.length} errors`
+    summary:
+      blockingErrors.length === 0
+        ? errors.length === 0
+          ? "Design validation passed"
+          : "Design validation passed with compatibility warnings"
+        : `Design validation failed: ${blockingErrors.length} errors`
   };
 };
 

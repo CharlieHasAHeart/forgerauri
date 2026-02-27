@@ -1,21 +1,16 @@
 import { describe, expect, test } from "vitest";
 import { toolPackage } from "../src/agent/tools/core/design_delivery/index.js";
 import { MockProvider } from "./helpers/mockProvider.js";
-import type { ContractDesignV1 } from "../src/agent/design/contract/schema.js";
+import type { ContractForDeliveryV1 } from "../src/agent/design/contract/views.js";
 
-const contract: ContractDesignV1 = {
+const contract: ContractForDeliveryV1 = {
   version: "v1",
   app: { name: "MacroGraph" },
   commands: [
     {
-      name: "lint_config",
-      purpose: "lint",
-      inputs: [{ name: "file_path", type: "string" }],
-      outputs: [{ name: "ok", type: "boolean" }]
+      name: "lint_config"
     }
-  ],
-  dataModel: { tables: [], migrations: { strategy: "single" } },
-  acceptance: { mustPass: ["pnpm_build"] }
+  ]
 };
 
 describe("tool_design_delivery", () => {

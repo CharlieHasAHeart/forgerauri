@@ -41,10 +41,24 @@ describe("contract view schemas", () => {
   test("ux/implementation/delivery views project required fields", () => {
     const uxView = contractForUxV1Schema.parse(fullContract);
     const implView = contractForImplementationV1Schema.parse(fullContract);
-    const deliveryView = contractForDeliveryV1Schema.parse(fullContract);
+    const deliveryView = contractForDeliveryV1Schema.parse({
+      version: fullContract.version,
+      app: fullContract.app,
+      commands: fullContract.commands.map((command) => ({ name: command.name }))
+    });
 
     expect(uxView.commands[0]?.purpose).toBe("lint");
     expect(implView.dataModel.tables[0]?.name).toBe("lint_runs");
     expect(deliveryView.commands[0]?.name).toBe("lint_config");
+  });
+
+  test("delivery view rejects legacy acceptance payload", () => {
+    const parsed = contractForDeliveryV1Schema.safeParse({
+      version: fullContract.version,
+      app: fullContract.app,
+      commands: fullContract.commands.map((command) => ({ name: command.name })),
+      acceptance: fullContract.acceptance
+    });
+    expect(parsed.success).toBe(false);
   });
 });

@@ -215,4 +215,25 @@ describe("tool_validate_design", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((error) => error.code === "CONTRACT_DELIVERY_POLICY_CONFLICT")).toBe(true);
   });
+
+  test("derives delivery verifyPolicy from legacy contract.acceptance when delivery is missing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "forgetauri-validate-"));
+    await mkdir(join(root, "src/lib/design"), { recursive: true });
+
+    const legacyContract = {
+      ...baseContract,
+      acceptance: {
+        mustPass: ["pnpm_build", "cargo_check"],
+        smokeCommands: ["lint_config"]
+      }
+    };
+
+    await writeFile(join(root, "forgetauri.contract.json"), JSON.stringify(legacyContract, null, 2), "utf8");
+    await writeFile(join(root, "src/lib/design/ux.json"), JSON.stringify(baseUx, null, 2), "utf8");
+    await writeFile(join(root, "src/lib/design/implementation.json"), JSON.stringify(baseImplementation, null, 2), "utf8");
+
+    const result = await runValidateDesign({ projectRoot: root });
+    expect(result.ok).toBe(true);
+    expect(result.errors.some((error) => error.code === "DELIVERY_MISSING_USING_CONTRACT_ACCEPTANCE")).toBe(true);
+  });
 });
