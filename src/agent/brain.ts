@@ -1,3 +1,7 @@
+/**
+ * @deprecated Compatibility shim.
+ * Use `src/agent/planning/planner.ts` (or `src/agent/index.ts` for public API) directly.
+ */
 export {
   proposeNextActions,
   proposePlan,

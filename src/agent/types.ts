@@ -5,22 +5,11 @@ import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
 import type { UXDesignV1 } from "./design/ux/schema.js";
 import type { PlanChangeDecision, PlanChangeRequestV2, PlanV1 } from "./plan/schema.js";
 
-export type AgentPhase =
-  | "BOOT"
-  | "DESIGN_CONTRACT"
-  | "MATERIALIZE_CONTRACT"
-  | "DESIGN_UX"
-  | "MATERIALIZE_UX"
-  | "DESIGN_IMPL"
-  | "MATERIALIZE_IMPL"
-  | "DESIGN_DELIVERY"
-  | "MATERIALIZE_DELIVERY"
-  | "VALIDATE_DESIGN"
-  | "CODEGEN_FROM_DESIGN"
-  | "VERIFY"
-  | "REPAIR"
-  | "DONE"
-  | "FAILED";
+/**
+ * @deprecated Legacy terminal alias only. Use AgentStatus for plan-first runtime state.
+ */
+export type AgentPhase = "DONE" | "FAILED";
+export type AgentStatus = "planning" | "executing" | "reviewing" | "replanning" | "done" | "failed";
 
 export type ErrorKind = "Deps" | "TS" | "Rust" | "Tauri" | "Config" | "Unknown";
 
@@ -51,8 +40,9 @@ export type AgentBudgets = {
 };
 
 export type AgentState = {
-  phase: AgentPhase;
-  status?: "planning" | "executing" | "reviewing" | "replanning" | "done" | "failed";
+  /** @deprecated Legacy terminal alias. Prefer `status`. */
+  phase?: AgentPhase;
+  status: AgentStatus;
   goal: string;
   specPath: string;
   outDir: string;
