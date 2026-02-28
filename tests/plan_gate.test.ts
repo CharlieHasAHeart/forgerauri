@@ -7,11 +7,11 @@ const baseRequest = () =>
   planChangeRequestV2Schema.parse({
     version: "v2",
     reason: "reorder for dependency",
-    change_type: "reorder_tasks",
+    change_type: "tasks.reorder",
     impact: { steps_delta: 0, risk: "low" },
     evidence: [],
     requested_tools: [],
-    patch: [{ op: "reorder", task_id: "t1", after_task_id: "t2" }]
+    patch: [{ action: "tasks.reorder", task_id: "t1", after_task_id: "t2" }]
   });
 
 const basePolicy = () =>
@@ -50,11 +50,11 @@ describe("plan gate", () => {
     expect((gate.guidance ?? "").length).toBeGreaterThan(0);
   });
 
-  test("denies edit_tech_stack when tech stack is locked", () => {
+  test("denies techStack.update when tech stack is locked", () => {
     const request = planChangeRequestV2Schema.parse({
       ...baseRequest(),
       change_type: "replace_tech",
-      patch: [{ op: "edit_tech_stack", changes: { locked: false } }]
+      patch: [{ action: "techStack.update", changes: { locked: false } }]
     });
 
     const gate = evaluatePlanChange({
@@ -67,11 +67,11 @@ describe("plan gate", () => {
     expect((gate.guidance ?? "").length).toBeGreaterThan(0);
   });
 
-  test("denies edit_acceptance when acceptance is locked", () => {
+  test("denies acceptance.update when acceptance is locked", () => {
     const request = planChangeRequestV2Schema.parse({
       ...baseRequest(),
       change_type: "relax_acceptance",
-      patch: [{ op: "edit_acceptance", changes: { locked: false } }]
+      patch: [{ action: "acceptance.update", changes: { locked: false } }]
     });
 
     const gate = evaluatePlanChange({

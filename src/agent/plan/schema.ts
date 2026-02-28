@@ -123,8 +123,10 @@ export const taskActionPlanV1Schema = z.object({
 export type TaskActionPlanV1 = z.infer<typeof taskActionPlanV1Schema>;
 
 export const planChangeTypeSchema = z.enum([
-  "reorder_tasks",
-  "add_task",
+  "tasks.reorder",
+  "tasks.add",
+  "tasks.remove",
+  "tasks.update",
   "scope_reduce",
   "scope_expand",
   "replace_tech",
@@ -153,32 +155,32 @@ const planTaskChangesSchema = planTaskSchema
     success_criteria: z.array(successCriteriaSchema).optional()
   });
 
-export const planPatchOperationSchema = z.discriminatedUnion("op", [
+export const planPatchOperationSchema = z.discriminatedUnion("action", [
   z.object({
-    op: z.literal("add_task"),
+    action: z.literal("tasks.add"),
     task: planTaskSchema,
     after_task_id: z.string().min(1).optional()
   }),
   z.object({
-    op: z.literal("remove_task"),
+    action: z.literal("tasks.remove"),
     task_id: z.string().min(1)
   }),
   z.object({
-    op: z.literal("edit_task"),
+    action: z.literal("tasks.update"),
     task_id: z.string().min(1),
     changes: planTaskChangesSchema
   }),
   z.object({
-    op: z.literal("reorder"),
+    action: z.literal("tasks.reorder"),
     task_id: z.string().min(1),
     after_task_id: z.string().min(1).optional()
   }),
   z.object({
-    op: z.literal("edit_acceptance"),
+    action: z.literal("acceptance.update"),
     changes: z.unknown()
   }),
   z.object({
-    op: z.literal("edit_tech_stack"),
+    action: z.literal("techStack.update"),
     changes: z.unknown()
   })
 ]);
@@ -189,10 +191,10 @@ export const planChangeRequestV2Schema = z.object({
   version: z.literal("v2"),
   reason: z.string().min(1),
   change_type: z.enum([
-    "reorder_tasks",
-    "add_task",
-    "remove_task",
-    "edit_task",
+    "tasks.reorder",
+    "tasks.add",
+    "tasks.remove",
+    "tasks.update",
     "scope_reduce",
     "scope_expand",
     "replace_tech",

@@ -35,13 +35,13 @@ describe("plan patch apply", () => {
     const add = planChangeRequestV2Schema.parse({
       version: "v2",
       reason: "add debug",
-      change_type: "add_task",
+      change_type: "tasks.add",
       evidence: [],
       impact: { steps_delta: 1, risk: "low" },
       requested_tools: [],
       patch: [
         {
-          op: "add_task",
+          action: "tasks.add",
           after_task_id: "t1",
           task: {
             id: "t3",
@@ -60,11 +60,11 @@ describe("plan patch apply", () => {
     const edit = planChangeRequestV2Schema.parse({
       version: "v2",
       reason: "edit",
-      change_type: "edit_task",
+      change_type: "tasks.update",
       evidence: [],
       impact: { steps_delta: 0, risk: "low" },
       requested_tools: [],
-      patch: [{ op: "edit_task", task_id: "t3", changes: { title: "three-updated" } }]
+      patch: [{ action: "tasks.update", task_id: "t3", changes: { title: "three-updated" } }]
     });
 
     const p2 = applyPlanChangePatch(p1, edit);
@@ -72,12 +72,12 @@ describe("plan patch apply", () => {
 
     const reorder = planChangeRequestV2Schema.parse({
       version: "v2",
-      reason: "reorder",
-      change_type: "reorder_tasks",
+      reason: "tasks.reorder",
+      change_type: "tasks.reorder",
       evidence: [],
       impact: { steps_delta: 0, risk: "low" },
       requested_tools: [],
-      patch: [{ op: "reorder", task_id: "t2" }]
+      patch: [{ action: "tasks.reorder", task_id: "t2" }]
     });
 
     const p3 = applyPlanChangePatch(p2, reorder);
@@ -86,11 +86,11 @@ describe("plan patch apply", () => {
     const remove = planChangeRequestV2Schema.parse({
       version: "v2",
       reason: "remove",
-      change_type: "remove_task",
+      change_type: "tasks.remove",
       evidence: [],
       impact: { steps_delta: -1, risk: "low" },
       requested_tools: [],
-      patch: [{ op: "remove_task", task_id: "t3" }]
+      patch: [{ action: "tasks.remove", task_id: "t3" }]
     });
 
     const p4 = applyPlanChangePatch(p3, remove);
@@ -101,11 +101,11 @@ describe("plan patch apply", () => {
     const bad = planChangeRequestV2Schema.parse({
       version: "v2",
       reason: "break deps",
-      change_type: "remove_task",
+      change_type: "tasks.remove",
       evidence: [],
       impact: { steps_delta: -1, risk: "low" },
       requested_tools: [],
-      patch: [{ op: "remove_task", task_id: "t1" }]
+      patch: [{ action: "tasks.remove", task_id: "t1" }]
     });
 
     expect(() => applyPlanChangePatch(basePlan, bad)).toThrow(/invalid PlanV1/);

@@ -50,11 +50,11 @@ describe("replanner", () => {
       JSON.stringify({
         version: "v2",
         reason: "adjust plan",
-        change_type: "edit_task",
+        change_type: "tasks.update",
         evidence: ["failing"],
         impact: { steps_delta: 0, risk: "low" },
         requested_tools: [],
-        patch: [{ op: "edit_task", task_id: "t1", changes: { description: "new" } }]
+        patch: [{ action: "tasks.update", task_id: "t1", changes: { description: "new" } }]
       }),
       JSON.stringify({
         decision: "denied",
@@ -93,13 +93,13 @@ describe("replanner", () => {
       JSON.stringify({
         version: "v2",
         reason: "add retry helper",
-        change_type: "add_task",
+        change_type: "tasks.add",
         evidence: ["failing"],
         impact: { steps_delta: 1, risk: "low" },
         requested_tools: [],
         patch: [
           {
-            op: "add_task",
+            action: "tasks.add",
             task: {
               id: "t2",
               title: "extra",
@@ -115,7 +115,7 @@ describe("replanner", () => {
         reason: "looks good",
         patch: [
           {
-            op: "add_task",
+            action: "tasks.add",
             task: {
               id: "t2",
               title: "extra",

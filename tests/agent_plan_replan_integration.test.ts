@@ -141,13 +141,13 @@ describe("agent plan replan integration (stub toolchain)", () => {
       JSON.stringify({
         version: "v2",
         reason: "switch t2 check to tool_result after file write action",
-        change_type: "edit_task",
+        change_type: "tasks.update",
         evidence: ["b file missing after 3 retries", "noop action has no effect"],
         impact: { steps_delta: 0, risk: "low impact" },
         requested_tools: ["tool_write_file"],
         patch: [
           {
-            op: "edit_task",
+            action: "tasks.update",
             task_id: "t2",
             changes: {
               description: "write b and check tool_result",
@@ -161,7 +161,7 @@ describe("agent plan replan integration (stub toolchain)", () => {
         reason: "approved by user text",
         patch: [
           {
-            op: "edit_task",
+            action: "tasks.update",
             task_id: "t2",
             changes: {
               description: "write b and check tool_result",

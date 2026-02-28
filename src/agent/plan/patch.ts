@@ -16,56 +16,56 @@ const reorderAfter = <T extends { id: string }>(items: T[], taskId: string, afte
   return insertAfter(without, task, afterId);
 };
 
-const applyPatchOp = (plan: PlanV1, op: PlanPatchOperation): PlanV1 => {
+const applyPatchAction = (plan: PlanV1, patchAction: PlanPatchOperation): PlanV1 => {
   const next: PlanV1 = {
     ...plan,
     milestones: [...plan.milestones],
     tasks: [...plan.tasks]
   };
 
-  if (op.op === "add_task") {
-    if (next.tasks.some((task) => task.id === op.task.id)) {
-      throw new Error(`add_task duplicate id '${op.task.id}'`);
+  if (patchAction.action === "tasks.add") {
+    if (next.tasks.some((task) => task.id === patchAction.task.id)) {
+      throw new Error(`tasks.add duplicate id '${patchAction.task.id}'`);
     }
-    next.tasks = insertAfter(next.tasks, op.task, op.after_task_id);
+    next.tasks = insertAfter(next.tasks, patchAction.task, patchAction.after_task_id);
     return next;
   }
 
-  if (op.op === "remove_task") {
-    next.tasks = next.tasks.filter((task) => task.id !== op.task_id);
+  if (patchAction.action === "tasks.remove") {
+    next.tasks = next.tasks.filter((task) => task.id !== patchAction.task_id);
     next.milestones = next.milestones.map((milestone) => ({
       ...milestone,
-      task_ids: milestone.task_ids.filter((id) => id !== op.task_id)
+      task_ids: milestone.task_ids.filter((id) => id !== patchAction.task_id)
     }));
     return next;
   }
 
-  if (op.op === "edit_task") {
-    const idx = next.tasks.findIndex((task) => task.id === op.task_id);
-    if (idx < 0) throw new Error(`edit_task unknown id '${op.task_id}'`);
+  if (patchAction.action === "tasks.update") {
+    const idx = next.tasks.findIndex((task) => task.id === patchAction.task_id);
+    if (idx < 0) throw new Error(`tasks.update unknown id '${patchAction.task_id}'`);
     next.tasks[idx] = {
       ...next.tasks[idx]!,
-      ...op.changes,
+      ...patchAction.changes,
       id: next.tasks[idx]!.id
     };
     return next;
   }
 
-  if (op.op === "reorder") {
-    next.tasks = reorderAfter(next.tasks, op.task_id, op.after_task_id);
+  if (patchAction.action === "tasks.reorder") {
+    next.tasks = reorderAfter(next.tasks, patchAction.task_id, patchAction.after_task_id);
     return next;
   }
 
-  if (op.op === "edit_acceptance") {
-    const changes = op.changes as Record<string, unknown>;
+  if (patchAction.action === "acceptance.update") {
+    const changes = patchAction.changes as Record<string, unknown>;
     if (typeof changes.locked === "boolean") {
       next.acceptance_locked = changes.locked;
     }
     return next;
   }
 
-  if (op.op === "edit_tech_stack") {
-    const changes = op.changes as Record<string, unknown>;
+  if (patchAction.action === "techStack.update") {
+    const changes = patchAction.changes as Record<string, unknown>;
     if (typeof changes.locked === "boolean") {
       next.tech_stack_locked = changes.locked;
     }
@@ -82,8 +82,8 @@ export const applyPlanChangePatch = (current: PlanV1, request: PlanChangeRequest
     tasks: [...current.tasks]
   };
 
-  for (const op of request.patch) {
-    next = applyPatchOp(next, op);
+  for (const patchAction of request.patch) {
+    next = applyPatchAction(next, patchAction);
   }
 
   const parsed = planV1Schema.safeParse(next);

@@ -28,7 +28,9 @@ export const interpretPlanChangeReview = async (args: {
           "Interpret user natural-language feedback for a plan change review. " +
           "Return strict JSON only. " +
           "If user rejects, output decision=denied with non-empty guidance and no patch. " +
-          "If user approves, output decision=approved with patch array only."
+          "If user approves, output decision=approved with patch array only. " +
+          "Patch operations must use `action` (not `op`) and allowed actions are: " +
+          "tasks.add, tasks.remove, tasks.update, tasks.reorder, acceptance.update, techStack.update."
       },
       {
         role: "user",
@@ -45,7 +47,8 @@ export const interpretPlanChangeReview = async (args: {
       previousResponseId: args.previousResponseId,
       instructions:
         "Decide approve/deny based on user feedback. " +
-        "For approved, provide final patch to apply. For denied, provide actionable guidance.",
+        "For approved, provide final patch to apply using action-based operations. " +
+        "For denied, provide actionable guidance.",
       truncation: args.truncation,
       contextManagement: args.contextManagement
     }

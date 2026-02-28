@@ -25,8 +25,8 @@ const hasDisallowedTools = (requestedTools: string[], allowedToolNames: string[]
 };
 
 const patchTouchesAcceptanceOrTech = (request: PlanChangeRequestV2): { acceptance: boolean; tech: boolean } => ({
-  acceptance: request.patch.some((op) => op.op === "edit_acceptance"),
-  tech: request.patch.some((op) => op.op === "edit_tech_stack")
+  acceptance: request.patch.some((patchAction) => patchAction.action === "acceptance.update"),
+  tech: request.patch.some((patchAction) => patchAction.action === "techStack.update")
 });
 
 export const evaluatePlanChange = (input: PlanChangeGateInput): GateResult => {
@@ -51,7 +51,7 @@ export const evaluatePlanChange = (input: PlanChangeGateInput): GateResult => {
   if (policy.acceptance.locked && touches.acceptance && !policy.userExplicitlyAllowedRelaxAcceptance) {
     return denied(
       "acceptance is locked by policy",
-      "Keep acceptance unchanged. Propose task-level fixes (add_task/edit_task) instead of editing acceptance."
+      "Keep acceptance unchanged. Propose task-level fixes (tasks.add/tasks.update) instead of editing acceptance."
     );
   }
 

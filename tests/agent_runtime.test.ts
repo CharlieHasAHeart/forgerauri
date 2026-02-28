@@ -120,7 +120,7 @@ describe("agent runtime (plan mode only)", () => {
         evidence: ["failing"],
         impact: { steps_delta: 0, risk: "low" },
         requested_tools: [],
-        patch: [{ op: "edit_acceptance", changes: { locked: false } }]
+        patch: [{ action: "acceptance.update", changes: { locked: false } }]
       })
     ]);
 
