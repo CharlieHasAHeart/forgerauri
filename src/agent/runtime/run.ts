@@ -1,4 +1,4 @@
-import { AgentTurnAuditCollector } from "./audit.js";
+import { AgentTurnAuditCollector } from "../../runtime/audit/index.js";
 import { renderToolIndex } from "../planning/tool_index.js";
 import { defaultAgentPolicy, type AgentPolicy } from "../policy/policy.js";
 import { createToolRegistry, loadToolRegistryWithDocs } from "../tools/registry.js";

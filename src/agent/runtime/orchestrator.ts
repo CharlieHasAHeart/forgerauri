@@ -8,7 +8,7 @@ import type { AgentPolicy } from "../policy/policy.js";
 import type { AgentState } from "../types.js";
 import type { LlmProvider } from "../../llm/provider.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";
-import type { AgentTurnAuditCollector } from "./audit.js";
+import type { AgentTurnAuditCollector } from "../../runtime/audit/index.js";
 import { setUsedTurn } from "./budgets.js";
 import { setStateError } from "./errors.js";
 import { recordPlanProposed, recordTaskActionPlan } from "./recorder.js";

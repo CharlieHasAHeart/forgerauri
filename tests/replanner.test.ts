@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { MockProvider } from "./helpers/mockProvider.js";
 import { handleReplan } from "../src/agent/runtime/replanner.js";
-import { AgentTurnAuditCollector } from "../src/agent/runtime/audit.js";
+import { AgentTurnAuditCollector } from "../src/runtime/audit/index.js";
 import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
 import { planV1Schema } from "../src/agent/plan/schema.js";
 import type { AgentState } from "../src/agent/types.js";
