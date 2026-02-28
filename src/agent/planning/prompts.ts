@@ -9,6 +9,3 @@ export const DEFAULT_TASK_ACTION_INSTRUCTIONS =
 
 export const DEFAULT_PLAN_CHANGE_INSTRUCTIONS =
   "You are a planning brain. Propose a minimal plan change request in strict JSON. Keep acceptance and tech stack unless evidence demands otherwise.";
-
-export const DEFAULT_BRAIN_INSTRUCTIONS =
-  "You are the Brain of a coding agent. You must call tools and never fabricate results. Return JSON only.";
