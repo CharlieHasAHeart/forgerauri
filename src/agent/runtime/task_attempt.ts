@@ -117,6 +117,26 @@ export const runTaskAttempt = async (args: {
     }
   }
 
+  // Deterministic injection for bootstrap tool required inputs
+  toolCalls = toolCalls.map((call) => {
+    if (call.name !== "tool_bootstrap_project") return call;
+
+    const rawInput = (call as { input: unknown }).input;
+    const inputObj = rawInput && typeof rawInput === "object" ? (rawInput as Record<string, unknown>) : {};
+
+    if (inputObj.specPath === undefined || String(inputObj.specPath).trim().length === 0) {
+      inputObj.specPath = args.ctx.memory.specPath ?? args.state.specPath;
+    }
+    if (inputObj.outDir === undefined || String(inputObj.outDir).trim().length === 0) {
+      inputObj.outDir = args.ctx.memory.outDir ?? args.state.outDir;
+    }
+    if (inputObj.apply === undefined) {
+      inputObj.apply = args.state.flags.apply;
+    }
+
+    return { ...call, input: inputObj };
+  });
+
   const actionPlanActions = toolCalls.map((item) => ({ name: item.name }));
   args.state.status = "executing";
 
@@ -131,6 +151,12 @@ export const runTaskAttempt = async (args: {
     task: args.task,
     onEvent: args.onEvent
   });
+
+  // Sync appDir after bootstrap (tool writes ctx.memory.appDir on success)
+  if (args.ctx.memory.appDir && (!args.state.appDir || args.state.appDir !== args.ctx.memory.appDir)) {
+    args.state.appDir = args.ctx.memory.appDir;
+    // args.state.projectRoot = args.state.projectRoot ?? args.ctx.memory.appDir;
+  }
 
   recordTaskActionPlan({
     audit: args.audit,
