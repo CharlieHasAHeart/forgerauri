@@ -11,7 +11,7 @@ export const extractJsonObject = (raw: string): string => {
   return source;
 };
 
-export const llmJsonWithRetry = async <T>(args: {
+const llmJsonFromTextWithRetry = async <T>(args: {
   provider: LlmProvider;
   messages: LlmMessage[];
   schema: z.ZodType<T>;
@@ -72,4 +72,48 @@ export const llmJsonWithRetry = async <T>(args: {
   }
 
   throw new Error("unreachable");
+};
+
+export const llmJson = async <T>(args: {
+  provider: LlmProvider;
+  messages: LlmMessage[];
+  schema: z.ZodType<T>;
+  instructions: string;
+  previousResponseId?: string;
+  truncation?: "auto" | "disabled";
+  contextManagement?: Array<{ type: "compaction"; compactThreshold?: number }>;
+  maxOutputTokens?: number;
+}): Promise<{
+  data: T;
+  raw: string;
+  responseId?: string;
+  usage?: unknown;
+  previousResponseIdSent?: string;
+}> => {
+  const previousResponseIdSent = args.previousResponseId;
+
+  try {
+    if (typeof args.provider.completeJSON === "function") {
+      const result = await args.provider.completeJSON(args.messages, args.schema, {
+        temperature: 0,
+        maxOutputTokens: args.maxOutputTokens ?? 3000,
+        instructions: args.instructions,
+        previousResponseId: args.previousResponseId,
+        truncation: args.truncation,
+        contextManagement: args.contextManagement
+      });
+      const data = args.schema.parse(result.data as unknown);
+      return {
+        data,
+        raw: result.raw && result.raw.length > 0 ? result.raw : JSON.stringify(data, null, 2),
+        responseId: result.responseId,
+        usage: (result as { usage?: unknown }).usage,
+        previousResponseIdSent
+      };
+    }
+  } catch {
+    // fall through to text retry path
+  }
+
+  return llmJsonFromTextWithRetry(args);
 };

@@ -3,7 +3,7 @@ import type { LlmProvider } from "../../llm/provider.js";
 import type { AgentPolicy } from "../policy/policy.js";
 import type { PlanChangeRequestV2, PlanV1, TaskActionPlanV1 } from "../plan/schema.js";
 import { planChangeRequestV2Schema, planV1Schema, taskActionPlanV1Schema } from "../plan/schema.js";
-import { llmJsonWithRetry } from "./json_extract.js";
+import { llmJson } from "./json_extract.js";
 import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS, DEFAULT_TASK_ACTION_INSTRUCTIONS } from "./prompts.js";
 import { renderToolIndex } from "./tool_index.js";
 import type { ToolSpec } from "../tools/types.js";
@@ -30,7 +30,7 @@ export const proposePlan = async (args: {
 
   const toolIndex = renderToolIndex(args.registry);
 
-  const result = await llmJsonWithRetry({
+  const result = await llmJson({
     provider: args.provider,
     schema: planV1Schema,
     instructions,
@@ -94,7 +94,7 @@ export const proposePlanChange = async (args: {
 }> => {
   const instructions = args.instructions ?? DEFAULT_PLAN_CHANGE_INSTRUCTIONS;
 
-  const result = await llmJsonWithRetry({
+  const result = await llmJson({
     provider: args.provider,
     schema: planChangeRequestV2Schema,
     instructions,
@@ -146,7 +146,7 @@ export const proposeTaskActionPlan = async (args: {
 }> => {
   const instructions = args.instructions ?? DEFAULT_TASK_ACTION_INSTRUCTIONS;
 
-  const result = await llmJsonWithRetry({
+  const result = await llmJson({
     provider: args.provider,
     schema: taskActionPlanV1Schema,
     instructions,
