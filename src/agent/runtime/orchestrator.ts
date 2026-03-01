@@ -90,11 +90,9 @@ export const runPlanFirstAgent = async (args: {
     if (!nextTask) {
       if (completed.size === currentPlan.tasks.length) {
         state.status = "done";
-        state.phase = "DONE";
         break;
       }
       state.status = "failed";
-      state.phase = "FAILED";
       setStateError(state, "Config", "No executable task found (dependency cycle or invalid plan)");
       break;
     }
@@ -146,7 +144,6 @@ export const runPlanFirstAgent = async (args: {
         toolCalls = proposal.toolCalls;
       } catch (error) {
         state.status = "failed";
-        state.phase = "FAILED";
         setStateError(
           state,
           "Unknown",
@@ -217,12 +214,11 @@ export const runPlanFirstAgent = async (args: {
       }
     }
 
-    if (state.phase === "FAILED") break;
+    if (state.status === "failed") break;
   }
 
   if (state.status !== "failed" && state.status !== "done") {
     state.status = "failed";
-    state.phase = "FAILED";
     state.lastError = state.lastError ?? { kind: "Unknown", message: "max turns reached" };
   }
 };

@@ -44,7 +44,6 @@ export const handleReplan = async (args: {
   if (!currentPlan) {
     setStateError(state, "Config", "Missing current plan during replan");
     state.status = "failed";
-    state.phase = "FAILED";
     return { ok: false, replans: args.replans };
   }
 
@@ -99,7 +98,6 @@ export const handleReplan = async (args: {
 
   if (gateResult.status === "denied") {
     state.status = "failed";
-    state.phase = "FAILED";
     setStateError(
       state,
       "Config",
@@ -141,7 +139,6 @@ export const handleReplan = async (args: {
 
   if (interpreted.outcome.decision === "denied") {
     state.status = "failed";
-    state.phase = "FAILED";
     setStateError(
       state,
       "Config",
@@ -152,14 +149,12 @@ export const handleReplan = async (args: {
 
   if (args.replans >= policy.budgets.max_replans) {
     state.status = "failed";
-    state.phase = "FAILED";
     setStateError(state, "Config", `Replan budget exceeded: ${args.replans} >= ${policy.budgets.max_replans}`);
     return { ok: false, replans: args.replans };
   }
 
   if (!interpreted.outcome.patch || interpreted.outcome.patch.length === 0) {
     state.status = "failed";
-    state.phase = "FAILED";
     setStateError(state, "Config", "Approved plan review outcome did not provide a patch.");
     return { ok: false, replans: args.replans };
   }

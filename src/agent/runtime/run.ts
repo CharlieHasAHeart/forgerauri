@@ -54,7 +54,6 @@ export const runAgent = async (args: {
     });
 
   const state: AgentState = {
-    phase: undefined,
     goal: args.goal,
     specPath: args.specPath,
     outDir: args.outDir,
@@ -118,16 +117,9 @@ export const runAgent = async (args: {
     onEvent: args.onEvent
   });
 
-  if (state.status === "done") {
-    state.phase = "DONE";
-  } else if (state.status === "failed") {
-    state.phase = "FAILED";
-  }
-
   const base = state.appDir ?? state.outDir;
   const auditPath = await audit.flush(base, {
     ok: state.status === "done",
-    phase: state.phase,
     verifyHistory: state.verifyHistory,
     patchPaths: state.patchPaths,
     touchedFiles: state.touchedFiles.slice(-200),

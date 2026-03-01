@@ -40,8 +40,6 @@ export type AgentBudgets = {
 };
 
 export type AgentState = {
-  /** @deprecated Legacy terminal alias. Prefer `status`. */
-  phase?: AgentPhase;
   status: AgentStatus;
   goal: string;
   specPath: string;

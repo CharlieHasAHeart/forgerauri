@@ -2,7 +2,6 @@ import type { AgentState } from "../types.js";
 import { summarizePlan } from "../plan/selectors.js";
 
 export const summarizeState = (state: AgentState): unknown => ({
-  phase: state.phase,
   status: state.status,
   goal: state.goal,
   projectRoot: state.projectRoot,

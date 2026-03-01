@@ -118,7 +118,6 @@ describe("agent plan mode", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.state.phase).toBe("DONE");
     expect(result.state.status).toBe("done");
     expect(result.state.completedTasks).toContain("t1");
   });
