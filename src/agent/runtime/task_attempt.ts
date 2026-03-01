@@ -11,6 +11,7 @@ import { setStateError } from "./errors.js";
 import type { AgentEvent } from "./events.js";
 import { recordTaskActionPlan } from "./recorder.js";
 import { summarizeState } from "./state.js";
+import { gateToolCalls } from "./toolcall_gate.js";
 
 export const runTaskAttempt = async (args: {
   turn: number;
@@ -45,47 +46,77 @@ export const runTaskAttempt = async (args: {
   let plannerResponseId: string | undefined;
   let plannerUsage: unknown;
   let plannerPreviousResponseIdSent: string | undefined;
+  const plannerRecentFailures = [...args.recentFailures];
 
-  try {
-    const proposal = await proposeToolCallsForTask({
-      goal: args.goal,
-      provider: args.provider,
-      policy: args.policy,
-      task: args.task,
-      planSummary,
-      stateSummary,
-      registry: args.registry,
-      recentFailures: args.recentFailures,
-      maxToolCallsPerTurn: args.maxToolCallsPerTurn,
-      previousResponseId: args.state.lastResponseId,
-      truncation: args.state.flags.truncation,
-      contextManagement:
-        typeof args.state.flags.compactionThreshold === "number"
-          ? [{ type: "compaction", compactThreshold: args.state.flags.compactionThreshold }]
-          : undefined
-    });
-    plannerRaw = proposal.raw;
-    plannerResponseId = proposal.responseId;
-    plannerUsage = proposal.usage;
-    plannerPreviousResponseIdSent = proposal.previousResponseIdSent;
-    toolCalls = proposal.toolCalls;
-  } catch (error) {
-    const message = `Failed to propose tool calls for task '${args.task.id}': ${
-      error instanceof Error ? error.message : "unknown error"
-    }`;
-    args.state.status = "failed";
-    setStateError(args.state, "Unknown", message);
-    return {
-      ok: false,
-      failures: [message],
-      toolCalls: [],
-      turnAuditResults: []
-    };
+  for (let planTry = 1; planTry <= 2; planTry += 1) {
+    try {
+      const proposal = await proposeToolCallsForTask({
+        goal: args.goal,
+        provider: args.provider,
+        policy: args.policy,
+        task: args.task,
+        planSummary,
+        stateSummary,
+        registry: args.registry,
+        recentFailures: plannerRecentFailures,
+        maxToolCallsPerTurn: args.maxToolCallsPerTurn,
+        previousResponseId: args.state.lastResponseId,
+        truncation: args.state.flags.truncation,
+        contextManagement:
+          typeof args.state.flags.compactionThreshold === "number"
+            ? [{ type: "compaction", compactThreshold: args.state.flags.compactionThreshold }]
+            : undefined
+      });
+      plannerRaw = proposal.raw;
+      plannerResponseId = proposal.responseId;
+      plannerUsage = proposal.usage;
+      plannerPreviousResponseIdSent = proposal.previousResponseIdSent;
+      args.state.lastResponseId = proposal.responseId ?? args.state.lastResponseId;
+
+      const gated = gateToolCalls({
+        toolCalls: proposal.toolCalls,
+        maxToolCallsPerTurn: args.maxToolCallsPerTurn,
+        policyMaxActionsPerTask: args.policy.budgets.max_actions_per_task
+      });
+      if (gated.ok) {
+        toolCalls = gated.toolCalls;
+        break;
+      }
+
+      plannerRecentFailures.push(
+        "PlannerOutputInvalid: toolCalls must be array of {name,input}. input must be a JSON object (not undefined). Fix and return valid tool calls."
+      );
+
+      if (planTry >= 2) {
+        args.state.status = "failed";
+        setStateError(args.state, "Config", gated.details);
+        return {
+          ok: false,
+          failures: [gated.details],
+          toolCalls: [],
+          turnAuditResults: []
+        };
+      }
+    } catch (error) {
+      const message = `Failed to propose tool calls for task '${args.task.id}': ${
+        error instanceof Error ? error.message : "unknown error"
+      }`;
+      if (planTry >= 2) {
+        args.state.status = "failed";
+        setStateError(args.state, "Unknown", message);
+        return {
+          ok: false,
+          failures: [message],
+          toolCalls: [],
+          turnAuditResults: []
+        };
+      }
+      plannerRecentFailures.push(
+        "PlannerOutputInvalid: toolCalls must be array of {name,input}. input must be a JSON object (not undefined). Fix and return valid tool calls."
+      );
+    }
   }
 
-  args.state.lastResponseId = plannerResponseId ?? args.state.lastResponseId;
-
-  toolCalls = toolCalls.slice(0, Math.min(args.maxToolCallsPerTurn, args.policy.budgets.max_actions_per_task));
   const actionPlanActions = toolCalls.map((item) => ({ name: item.name }));
   args.state.status = "executing";
 

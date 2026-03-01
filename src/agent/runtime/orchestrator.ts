@@ -12,6 +12,7 @@ import type { HumanReviewFn } from "./executor.js";
 import type { PlanChangeReviewFn } from "./replanner.js";
 import type { AgentEvent } from "./events.js";
 import { runTurn } from "./turn.js";
+import { preflightRuntime } from "./preflight.js";
 
 export const runPlanFirstAgent = async (args: {
   state: AgentState;
@@ -66,6 +67,7 @@ export const runPlanFirstAgent = async (args: {
     taskCount: planProposal.plan.tasks.length
   });
   args.onEvent?.({ type: "plan_proposed", taskCount: planProposal.plan.tasks.length });
+  preflightRuntime({ state, ctx });
 
   const completed = new Set<string>();
   const taskFailures = new Map<string, string[]>();

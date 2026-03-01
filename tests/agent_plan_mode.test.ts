@@ -186,6 +186,6 @@ describe("agent plan mode", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.summary).toContain("relax_acceptance");
+    expect(result.summary).toContain("blocked by policy");
   });
 });

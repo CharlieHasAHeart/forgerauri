@@ -9,6 +9,8 @@ import type { AgentEvent } from "./events.js";
 import { handleReplan, type PlanChangeReviewFn } from "./replanner.js";
 import { runTaskAttempt } from "./task_attempt.js";
 import { requiredInput } from "./util.js";
+import { classifyFailure } from "./failures.js";
+import { setStateError } from "./errors.js";
 
 export const runTaskWithRetries = async (args: {
   turn: number;
@@ -37,6 +39,7 @@ export const runTaskWithRetries = async (args: {
   let taskDone = false;
   let replans = args.replans;
   const currentPlan = requiredInput(args.state.planData, "plan missing in plan mode");
+  const systemFailureSeen = new Map<string, Set<string>>();
 
   while (!taskDone && attempts < args.policy.budgets.max_retries_per_task) {
     attempts += 1;
@@ -71,7 +74,27 @@ export const runTaskWithRetries = async (args: {
       continue;
     }
 
-    args.onEvent?.({ type: "criteria_result", ok: false, failures: attemptResult.failures });
+    const signal = classifyFailure({
+      criteriaFailures: attemptResult.failures,
+      lastErrorMessage: args.state.lastError?.message,
+      toolAuditErrors: attemptResult.turnAuditResults.filter((item) => !item.ok && item.error).map((item) => item.error as string)
+    });
+    const failureForEvent = signal.class === "system" ? [signal.message] : attemptResult.failures;
+    args.onEvent?.({ type: "criteria_result", ok: false, failures: failureForEvent });
+
+    if (signal.class === "system") {
+      const seen = systemFailureSeen.get(args.task.id) ?? new Set<string>();
+      const alreadySeen = seen.has(signal.fingerprint);
+      seen.add(signal.fingerprint);
+      systemFailureSeen.set(args.task.id, seen);
+      args.state.status = "failed";
+      setStateError(args.state, "Config", signal.message);
+      if (alreadySeen) {
+        return { ok: false, replans };
+      }
+      return { ok: false, replans };
+    }
+
     args.taskFailures.set(args.task.id, attemptResult.failures);
 
     if (attempts >= args.policy.budgets.max_retries_per_task) {

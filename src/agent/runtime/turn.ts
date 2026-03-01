@@ -45,6 +45,12 @@ export const runTurn = async (args: {
     return { status: "failed", replans: args.replans };
   }
 
+  if (!args.state.appDir) {
+    args.state.status = "failed";
+    setStateError(args.state, "Config", "Base root 'appDir' is not available");
+    return { status: "failed", replans: args.replans };
+  }
+
   const taskRun = await runTaskWithRetries({
     turn: args.turn,
     task: nextTask as PlanTask,
