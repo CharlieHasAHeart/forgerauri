@@ -13,13 +13,14 @@
  *
  * Agent mode is the only supported external workflow.
  */
-import { createInterface } from "node:readline/promises";
 import { readFile } from "node:fs/promises";
 import process from "node:process";
 import { ZodError } from "zod";
 import { loadEnvFile } from "./config/loadEnv.js";
 import { runAgent } from "./agent/index.js";
 import type { AgentPolicy } from "./agent/index.js";
+import { createRouteAUI } from "./cli/ui/routeA.js";
+import type { AgentEvent } from "./agent/runtime/events.js";
 
 type CliOptions = {
   specPath?: string;
@@ -34,6 +35,8 @@ type CliOptions = {
   repair: boolean;
   repairSpecified: boolean;
   autoApprove: boolean;
+  ui: "routeA";
+  noUi: boolean;
   maxTurns: number;
   maxPatches: number;
   policyInput?: string;
@@ -62,6 +65,8 @@ const parseArgs = (argv: string[]): CliOptions => {
   let repair = false;
   let repairSpecified = false;
   let autoApprove = false;
+  let ui: "routeA" = "routeA";
+  let noUi = false;
   let maxTurns = 8;
   let maxPatches = 6;
   let policyInput: string | undefined;
@@ -146,6 +151,16 @@ const parseArgs = (argv: string[]): CliOptions => {
       autoApprove = true;
       continue;
     }
+    if (arg === "--no-ui") {
+      noUi = true;
+      continue;
+    }
+    if (arg === "--ui") {
+      const value = argv[i + 1];
+      ui = value === "routeA" ? "routeA" : "routeA";
+      i += 1;
+      continue;
+    }
 
     if (!arg.startsWith("-") && !specPath) {
       specPath = arg;
@@ -165,6 +180,8 @@ const parseArgs = (argv: string[]): CliOptions => {
     repair,
     repairSpecified,
     autoApprove,
+    ui,
+    noUi,
     maxTurns,
     maxPatches,
     policyInput,
@@ -175,7 +192,7 @@ const parseArgs = (argv: string[]): CliOptions => {
 
 const usage = (): void => {
   console.error("Usage:");
-  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--policy <json-or-path>] [--plan] [--apply] [--verify] [--repair] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
+  console.error("- pnpm dev --agent --goal \"...\" --spec <path> --out <dir> [--policy <json-or-path>] [--plan] [--apply] [--verify] [--repair] [--ui routeA] [--no-ui] [--auto-approve] [--max-turns N] [--max-patches N] [--truncation auto|disabled] [--compaction-threshold N]");
 };
 
 const parsePolicy = async (input?: string): Promise<AgentPolicy | undefined> => {
@@ -198,22 +215,33 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
   const finalRepair = options.plan ? false : repair;
   const policy = await parsePolicy(options.policyInput);
 
-  const humanReview = options.autoApprove
-    ? undefined
-    : async (args: { reason: string; patchPaths: string[]; phase: string }): Promise<boolean> => {
-        if (!process.stdin.isTTY || !process.stdout.isTTY) {
-          throw new Error("Human review required but no TTY available. Re-run with --auto-approve.");
+  const useUi = options.ui === "routeA" && !options.noUi && process.stdin.isTTY && process.stdout.isTTY;
+  const policyMaxReplans = policy?.budgets?.max_replans ?? 3;
+  const ui = useUi
+    ? createRouteAUI({
+        goal: options.goal,
+        maxTurns: options.maxTurns,
+        maxPatches: options.maxPatches,
+        maxReplans: policyMaxReplans,
+        autoApprove: options.autoApprove
+      })
+    : undefined;
+
+  const onEvent = ui?.onEvent;
+  const humanReview = ui?.humanReview;
+  const requestPlanChangeReview = ui?.requestPlanChangeReview;
+  const noUiOnEvent =
+    !useUi
+      ? (event: AgentEvent): void => {
+          if (event.type === "tool_end") {
+            console.log(`${event.ok ? "✓" : "✗"} ${event.name}${event.note ? ` ${event.note}` : ""}`);
+          } else if (event.type === "replan_gate") {
+            console.log(`[replan-gate] ${event.status}: ${event.reason}`);
+          } else if (event.type === "failed" && event.message) {
+            console.log(`[failed] ${event.message}`);
+          }
         }
-        console.log(`Human review required at phase=${args.phase}: ${args.reason}`);
-        args.patchPaths.forEach((path) => console.log(`- ${path}`));
-        const rl = createInterface({ input: process.stdin, output: process.stdout });
-        try {
-          const answer = (await rl.question("Continue automatic flow? [y/N] ")).trim().toLowerCase();
-          return answer === "y" || answer === "yes";
-        } finally {
-          rl.close();
-        }
-      };
+      : undefined;
 
   const result = await runAgent({
     goal: options.goal,
@@ -227,7 +255,9 @@ const runAgentMode = async (options: CliOptions): Promise<void> => {
     policy,
     truncation: options.truncation,
     compactionThreshold: options.compactionThreshold,
-    humanReview
+    humanReview,
+    requestPlanChangeReview,
+    onEvent: onEvent ?? noUiOnEvent
   });
 
   console.log(`Agent result: ${result.ok ? "ok" : "failed"}`);

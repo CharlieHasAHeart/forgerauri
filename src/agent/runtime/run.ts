@@ -10,6 +10,7 @@ import type { AgentState } from "../types.js";
 import { runPlanFirstAgent } from "./orchestrator.js";
 import type { HumanReviewFn } from "./executor.js";
 import type { PlanChangeReviewFn } from "./replanner.js";
+import type { AgentEvent } from "./events.js";
 
 export const runAgent = async (args: {
   goal: string;
@@ -30,6 +31,7 @@ export const runAgent = async (args: {
   registryDeps?: Parameters<typeof createToolRegistry>[0];
   humanReview?: HumanReviewFn;
   requestPlanChangeReview?: PlanChangeReviewFn;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<{ ok: boolean; summary: string; auditPath?: string; patchPaths?: string[]; state: AgentState }> => {
   const provider = args.provider ?? getProviderFromEnv();
   const runCmdImpl = args.runCmdImpl ?? runCmd;
@@ -112,7 +114,8 @@ export const runAgent = async (args: {
     audit,
     policy,
     humanReview: args.humanReview,
-    requestPlanChangeReview: args.requestPlanChangeReview
+    requestPlanChangeReview: args.requestPlanChangeReview,
+    onEvent: args.onEvent
   });
 
   if (state.status === "done") {
@@ -136,6 +139,7 @@ export const runAgent = async (args: {
   });
 
   if (state.status === "done") {
+    args.onEvent?.({ type: "done", auditPath });
     return {
       ok: true,
       summary: "Agent completed successfully",
@@ -146,6 +150,7 @@ export const runAgent = async (args: {
   }
 
   const message = state.lastError?.message ?? "max turns reached";
+  args.onEvent?.({ type: "failed", message, auditPath });
   return {
     ok: false,
     summary: message,

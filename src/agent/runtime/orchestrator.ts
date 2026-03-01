@@ -15,6 +15,7 @@ import { recordPlanProposed, recordTaskActionPlan } from "./recorder.js";
 import { summarizeState } from "./state.js";
 import { executeActionPlan, type HumanReviewFn } from "./executor.js";
 import { handleReplan, type PlanChangeReviewFn } from "./replanner.js";
+import type { AgentEvent } from "./events.js";
 
 const requiredInput = <T>(value: T | undefined, message: string): T => {
   if (value === undefined) {
@@ -34,6 +35,7 @@ export const runPlanFirstAgent = async (args: {
   policy: AgentPolicy;
   humanReview?: HumanReviewFn;
   requestPlanChangeReview?: PlanChangeReviewFn;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<void> => {
   const { state, provider, registry, ctx, maxTurns, maxToolCallsPerTurn, audit, policy } = args;
   const requestPlanChangeReview: PlanChangeReviewFn =
@@ -73,6 +75,7 @@ export const runPlanFirstAgent = async (args: {
     usage: planProposal.usage,
     taskCount: planProposal.plan.tasks.length
   });
+  args.onEvent?.({ type: "plan_proposed", taskCount: planProposal.plan.tasks.length });
 
   const completed = new Set<string>();
   const taskFailures = new Map<string, string[]>();
@@ -80,6 +83,7 @@ export const runPlanFirstAgent = async (args: {
 
   for (let turn = 1; turn <= maxTurns; turn += 1) {
     setUsedTurn(state, turn);
+    args.onEvent?.({ type: "turn_start", turn, maxTurns });
     const currentPlan = requiredInput(state.planData, "plan missing in plan mode");
     const nextTask = getNextReadyTask(currentPlan, completed);
 
@@ -97,6 +101,7 @@ export const runPlanFirstAgent = async (args: {
 
     state.status = "executing";
     state.currentTaskId = nextTask.id;
+    args.onEvent?.({ type: "task_selected", taskId: nextTask.id });
 
     let taskDone = false;
     let attempts = 0;
@@ -138,7 +143,8 @@ export const runPlanFirstAgent = async (args: {
         state,
         policy,
         humanReview: args.humanReview,
-        task: nextTask as PlanTask
+        task: nextTask as PlanTask,
+        onEvent: args.onEvent
       });
 
       recordTaskActionPlan({
@@ -154,11 +160,14 @@ export const runPlanFirstAgent = async (args: {
       });
 
       if (executed.criteria.ok) {
+        args.onEvent?.({ type: "criteria_result", ok: true, failures: [] });
         completed.add(nextTask.id);
         state.completedTasks = Array.from(completed);
         taskDone = true;
         continue;
       }
+
+      args.onEvent?.({ type: "criteria_result", ok: false, failures: executed.criteria.failures });
 
       taskFailures.set(nextTask.id, executed.criteria.failures);
 
@@ -172,7 +181,8 @@ export const runPlanFirstAgent = async (args: {
           replans,
           audit,
           turn,
-          requestPlanChangeReview
+          requestPlanChangeReview,
+          onEvent: args.onEvent
         });
         replans = replanned.replans;
         if (!replanned.ok) {

@@ -5,6 +5,7 @@ import type { AgentState, AgentStatus } from "../types.js";
 import { evaluateSuccessCriteriaWithTools } from "../evaluation/reviewer.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";
 import { setStateError, truncate } from "./errors.js";
+import type { AgentEvent } from "./events.js";
 
 export type HumanReviewFn = (args: { reason: string; patchPaths: string[]; phase: AgentStatus }) => Promise<boolean>;
 
@@ -29,6 +30,7 @@ export const executeToolCall = async (args: {
   state: AgentState;
   policy: AgentPolicy;
   humanReview?: HumanReviewFn;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<ExecutedToolCall> => {
   const { call, registry, ctx, state, policy, humanReview } = args;
 
@@ -61,6 +63,7 @@ export const executeToolCall = async (args: {
   const newPatchPaths = state.patchPaths.filter((path) => !beforePatches.has(path));
 
   if (newPatchPaths.length > 0 && humanReview) {
+    args.onEvent?.({ type: "patch_generated", paths: newPatchPaths });
     const approved = await humanReview({
       reason: "Generated PATCH files require manual merge",
       patchPaths: newPatchPaths,
@@ -99,6 +102,7 @@ export const executeActionPlan = async (args: {
   policy: AgentPolicy;
   humanReview?: HumanReviewFn;
   task: PlanTask;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<{
   turnAuditResults: Array<{ name: string; ok: boolean; error?: string; touchedPaths?: string[] }>;
   simpleToolResults: Array<{ name: string; ok: boolean }>;
@@ -111,14 +115,17 @@ export const executeActionPlan = async (args: {
   const simpleToolResults: Array<{ name: string; ok: boolean }> = [];
 
   for (const call of args.toolCalls) {
+    args.onEvent?.({ type: "tool_start", name: call.name });
     const executed = await executeToolCall({
       call,
       registry: args.registry,
       ctx: args.ctx,
       state: args.state,
       policy: args.policy,
-      humanReview: args.humanReview
+      humanReview: args.humanReview,
+      onEvent: args.onEvent
     });
+    args.onEvent?.({ type: "tool_end", name: call.name, ok: executed.ok, note: executed.note });
 
     args.state.toolResults.push(normalizeToolResults(executed.toolName, executed.ok, executed.note));
     turnAuditResults.push({
@@ -144,7 +151,8 @@ export const executeActionPlan = async (args: {
         ctx: args.ctx,
         state: args.state,
         policy: args.policy,
-        humanReview: args.humanReview
+        humanReview: args.humanReview,
+        onEvent: args.onEvent
       })
   });
 

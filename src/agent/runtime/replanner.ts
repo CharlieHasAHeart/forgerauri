@@ -12,6 +12,7 @@ import { recordPlanChange } from "./recorder.js";
 import type { AgentTurnAuditCollector } from "../../runtime/audit/index.js";
 import type { GateResult, PlanChangeRequestV2 } from "../plan/schema.js";
 import { interpretPlanChangeReview } from "./plan_change_review.js";
+import type { AgentEvent } from "./events.js";
 
 export type PlanChangeReviewContext = {
   request: PlanChangeRequestV2;
@@ -36,6 +37,7 @@ export const handleReplan = async (args: {
   audit: AgentTurnAuditCollector;
   turn: number;
   requestPlanChangeReview: PlanChangeReviewFn;
+  onEvent?: (event: AgentEvent) => void;
 }): Promise<{ ok: boolean; replans: number }> => {
   const { provider, state, policy } = args;
   const currentPlan = state.planData;
@@ -66,6 +68,7 @@ export const handleReplan = async (args: {
         ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
         : undefined
   });
+  args.onEvent?.({ type: "replan_proposed" });
 
   state.lastResponseId = changeProposal.responseId ?? state.lastResponseId;
   state.planHistory?.push({ type: "change_request", request: changeProposal.changeRequest });
@@ -87,6 +90,12 @@ export const handleReplan = async (args: {
   });
 
   state.planHistory?.push({ type: "change_gate_result", gateResult });
+  args.onEvent?.({
+    type: "replan_gate",
+    status: gateResult.status,
+    reason: gateResult.reason,
+    guidance: gateResult.guidance
+  });
 
   if (gateResult.status === "denied") {
     state.status = "failed";
@@ -112,6 +121,7 @@ export const handleReplan = async (args: {
     promptHint: "Use natural language: approve/reject this plan change. If rejecting, provide specific fix direction."
   });
   state.planHistory?.push({ type: "change_user_review_text", text: userText });
+  args.onEvent?.({ type: "replan_review_text", text: userText.length > 240 ? `${userText.slice(0, 240)}...` : userText });
 
   const interpreted = await interpretPlanChangeReview({
     provider,
@@ -160,5 +170,6 @@ export const handleReplan = async (args: {
   };
   state.planData = applyPlanChangePatch(currentPlan, approvedPatchRequest);
   state.planVersion = (state.planVersion ?? 1) + 1;
+  args.onEvent?.({ type: "replan_applied", newVersion: state.planVersion });
   return { ok: true, replans: args.replans + 1 };
 };
