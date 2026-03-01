@@ -4,11 +4,6 @@ import type { DeliveryDesignV1 } from "./design/delivery/schema.js";
 import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
 import type { UXDesignV1 } from "./design/ux/schema.js";
 import type { GateResult, PlanChangeRequestV2, PlanChangeReviewOutcome, PlanV1 } from "./plan/schema.js";
-
-/**
- * @deprecated Legacy terminal alias only. Use AgentStatus for plan-first runtime state.
- */
-export type AgentPhase = "DONE" | "FAILED";
 export type AgentStatus = "planning" | "executing" | "reviewing" | "replanning" | "done" | "failed";
 
 export type ErrorKind = "Deps" | "TS" | "Rust" | "Tauri" | "Config" | "Unknown";
