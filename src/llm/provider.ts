@@ -34,6 +34,22 @@ export type LlmResponse = {
 export interface LlmProvider {
   name: string;
   complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse>;
+  completeToolCalls?(
+    messages: LlmMessage[],
+    tools: Array<{
+      name: string;
+      description: string;
+      inputJsonSchema: unknown;
+    }>,
+    opts?: LlmCallOptions
+  ): Promise<{
+    toolCalls: Array<{ name: string; input: unknown }>;
+    text?: string;
+    raw?: string;
+    responseId?: string;
+    usage?: unknown;
+    previousResponseIdSent?: string;
+  }>;
   completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string>;
   completeJSON<T>(
     messages: LlmMessage[],
@@ -68,6 +84,18 @@ const summarizeZodError = (error: z.ZodError): string =>
 export abstract class BaseLlmProvider implements LlmProvider {
   abstract name: string;
   abstract complete(messages: LlmMessage[], opts?: LlmCallOptions): Promise<LlmResponse>;
+  completeToolCalls?(
+    messages: LlmMessage[],
+    tools: Array<{ name: string; description: string; inputJsonSchema: unknown }>,
+    opts?: LlmCallOptions
+  ): Promise<{
+    toolCalls: Array<{ name: string; input: unknown }>;
+    text?: string;
+    raw?: string;
+    responseId?: string;
+    usage?: unknown;
+    previousResponseIdSent?: string;
+  }>;
 
   async completeText(messages: LlmMessage[], opts?: LlmCallOptions): Promise<string> {
     const response = await this.complete(messages, opts);

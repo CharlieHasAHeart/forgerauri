@@ -66,10 +66,7 @@ describe("agent runtime (plan mode only)", () => {
         ]
       }),
       JSON.stringify({
-        version: "v1",
-        task_id: "t1",
-        rationale: "run noop",
-        actions: [{ name: "tool_noop", input: {} }]
+        toolCalls: [{ name: "tool_noop", input: {} }]
       })
     ]);
 
@@ -110,9 +107,9 @@ describe("agent runtime (plan mode only)", () => {
           }
         ]
       }),
-      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
-      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
-      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
       JSON.stringify({
         version: "v2",
         reason: "relax acceptance",
@@ -162,10 +159,7 @@ describe("agent runtime (plan mode only)", () => {
         ]
       }),
       JSON.stringify({
-        version: "v1",
-        task_id: "t1",
-        rationale: "run noop",
-        actions: [{ name: "tool_noop", input: {} }]
+        toolCalls: [{ name: "tool_noop", input: {} }]
       })
     ]);
 

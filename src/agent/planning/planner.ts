@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { LlmProvider } from "../../llm/provider.js";
 import type { AgentPolicy } from "../policy/policy.js";
-import type { PlanChangeRequestV2, PlanV1, TaskActionPlanV1 } from "../plan/schema.js";
-import { planChangeRequestV2Schema, planV1Schema, taskActionPlanV1Schema } from "../plan/schema.js";
+import type { PlanChangeRequestV2, PlanV1 } from "../plan/schema.js";
+import { planChangeRequestV2Schema, planV1Schema } from "../plan/schema.js";
 import { llmJson } from "./json_extract.js";
-import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS, DEFAULT_TASK_ACTION_INSTRUCTIONS } from "./prompts.js";
+import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS } from "./prompts.js";
 import { renderToolIndex } from "./tool_index.js";
 import type { ToolSpec } from "../tools/types.js";
 
@@ -117,61 +117,6 @@ export const proposePlanChange = async (args: {
 
   return {
     changeRequest: result.data,
-    raw: result.raw,
-    responseId: result.responseId,
-    usage: result.usage,
-    previousResponseIdSent: result.previousResponseIdSent
-  };
-};
-
-export const proposeTaskActionPlan = async (args: {
-  goal: string;
-  provider: LlmProvider;
-  policy: AgentPolicy;
-  task: PlanV1["tasks"][number];
-  planSummary: unknown;
-  stateSummary: unknown;
-  toolIndex: string;
-  recentFailures: string[];
-  previousResponseId?: string;
-  instructions?: string;
-  truncation?: "auto" | "disabled";
-  contextManagement?: Array<{ type: "compaction"; compactThreshold?: number }>;
-}): Promise<{
-  actionPlan: TaskActionPlanV1;
-  raw: string;
-  responseId?: string;
-  usage?: unknown;
-  previousResponseIdSent?: string;
-}> => {
-  const instructions = args.instructions ?? DEFAULT_TASK_ACTION_INSTRUCTIONS;
-
-  const result = await llmJson({
-    provider: args.provider,
-    schema: taskActionPlanV1Schema,
-    instructions,
-    previousResponseId: args.previousResponseId,
-    truncation: args.truncation,
-    contextManagement: args.contextManagement,
-    maxOutputTokens: 3200,
-    messages: [
-      {
-        role: "user",
-        content:
-          `Goal:\n${args.goal}\n\n` +
-          `Policy:\n${JSON.stringify(args.policy, null, 2)}\n\n` +
-          `Task:\n${JSON.stringify(args.task, null, 2)}\n\n` +
-          `Plan summary:\n${JSON.stringify(args.planSummary, null, 2)}\n\n` +
-          `State summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
-          `Recent failures:\n${JSON.stringify(args.recentFailures, null, 2)}\n\n` +
-          `Tool index:\n${args.toolIndex}\n` +
-          "Return TaskActionPlanV1 JSON only. Keep actions idempotent where possible."
-      }
-    ]
-  });
-
-  return {
-    actionPlan: result.data,
     raw: result.raw,
     responseId: result.responseId,
     usage: result.usage,

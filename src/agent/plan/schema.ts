@@ -105,23 +105,6 @@ export const planV1Schema = z
 
 export type PlanV1 = z.infer<typeof planV1Schema>;
 
-export const taskActionPlanActionSchema = z.object({
-  name: z.string().min(1),
-  input: z.unknown(),
-  on_fail: z.enum(["stop", "continue"]).optional(),
-  idempotency_key: z.string().min(1).optional()
-});
-
-export const taskActionPlanV1Schema = z.object({
-  version: z.literal("v1"),
-  task_id: z.string().min(1),
-  rationale: z.string().min(1),
-  actions: z.array(taskActionPlanActionSchema).min(1),
-  expected_artifacts: z.array(z.string().min(1)).optional()
-});
-
-export type TaskActionPlanV1 = z.infer<typeof taskActionPlanV1Schema>;
-
 export const planChangeTypeSchema = z.enum([
   "tasks.reorder",
   "tasks.add",

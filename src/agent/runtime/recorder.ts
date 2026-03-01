@@ -38,7 +38,7 @@ export const recordTaskActionPlan = (args: {
     llmPreviousResponseId: args.previousResponseIdSent,
     llmResponseId: args.responseId,
     llmUsage: args.usage,
-    note: `task_action_plan for ${args.taskId}`,
+    note: `task_tool_calls for ${args.taskId}`,
     toolCalls: args.toolCalls,
     toolResults: args.toolResults
   });

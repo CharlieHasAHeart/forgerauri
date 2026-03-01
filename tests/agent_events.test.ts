@@ -33,10 +33,7 @@ describe("agent runtime events", () => {
         ]
       }),
       JSON.stringify({
-        version: "v1",
-        task_id: "t1",
-        rationale: "run noop",
-        actions: [{ name: "tool_noop", input: {} }]
+        toolCalls: [{ name: "tool_noop", input: {} }]
       })
     ]);
 
@@ -82,4 +79,3 @@ describe("agent runtime events", () => {
     expect(names).toContain("done");
   });
 });
-

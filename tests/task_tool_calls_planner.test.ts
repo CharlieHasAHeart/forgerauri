@@ -1,19 +1,16 @@
 import { describe, expect, test } from "vitest";
-import { proposeTaskActionPlan } from "../src/agent/planning/planner.js";
+import { proposeToolCallsForTask } from "../src/agent/planning/tool_call_planner.js";
 import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
 import { createToolRegistry } from "../src/agent/tools/registry.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
-describe("task action planner", () => {
+describe("task tool-call planner", () => {
   test("retries once on invalid json", async () => {
     const registry = await createToolRegistry();
     const provider = new MockProvider([
       "not-json",
       JSON.stringify({
-        version: "v1",
-        task_id: "t1",
-        rationale: "run bootstrap",
-        actions: [
+        toolCalls: [
           {
             name: "tool_bootstrap_project",
             input: {
@@ -22,12 +19,11 @@ describe("task action planner", () => {
               apply: true
             }
           }
-        ],
-        expected_artifacts: ["/tmp/out/app"]
+        ]
       })
     ]);
 
-    const out = await proposeTaskActionPlan({
+    const out = await proposeToolCallsForTask({
       goal: "do task",
       provider,
       policy: defaultAgentPolicy({
@@ -47,12 +43,13 @@ describe("task action planner", () => {
         task_type: "build"
       },
       planSummary: { tasks: 1 },
-      stateSummary: { phase: "BOOT" },
-      toolIndex: "[]",
-      recentFailures: []
+      stateSummary: { status: "executing" },
+      registry,
+      recentFailures: [],
+      maxToolCallsPerTurn: 4
     });
 
-    expect(out.actionPlan.task_id).toBe("t1");
-    expect(out.actionPlan.actions[0]?.name).toBe("tool_bootstrap_project");
+    expect(out.mode).toBe("json_fallback");
+    expect(out.toolCalls[0]?.name).toBe("tool_bootstrap_project");
   });
 });

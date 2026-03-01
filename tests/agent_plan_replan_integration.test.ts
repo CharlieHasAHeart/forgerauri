@@ -127,17 +127,14 @@ describe("agent plan replan integration (stub toolchain)", () => {
         ]
       }),
       JSON.stringify({
-        version: "v1",
-        task_id: "t1",
-        rationale: "prepare and write a",
-        actions: [
+        toolCalls: [
           { name: "tool_prepare_workspace", input: {} },
           { name: "tool_write_file", input: { path: "a.txt", content: "a" } }
         ]
       }),
-      JSON.stringify({ version: "v1", task_id: "t2", rationale: "first try", actions: [{ name: "tool_noop", input: {} }] }),
-      JSON.stringify({ version: "v1", task_id: "t2", rationale: "second try", actions: [{ name: "tool_noop", input: {} }] }),
-      JSON.stringify({ version: "v1", task_id: "t2", rationale: "third try", actions: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
       JSON.stringify({
         version: "v2",
         reason: "switch t2 check to tool_result after file write action",
@@ -171,10 +168,7 @@ describe("agent plan replan integration (stub toolchain)", () => {
         ]
       }),
       JSON.stringify({
-        version: "v1",
-        task_id: "t2",
-        rationale: "after patch write b",
-        actions: [{ name: "tool_write_file", input: { path: "b.txt", content: "b" } }]
+        toolCalls: [{ name: "tool_write_file", input: { path: "b.txt", content: "b" } }]
       })
     ]);
 

@@ -56,10 +56,7 @@ describe("agent plan mode", () => {
         ]
       }),
       JSON.stringify({
-        version: "v1",
-        task_id: "t1",
-        rationale: "write marker file",
-        actions: [{ name: "tool_touch_file", input: { path: "done.txt", content: "ok" } }]
+        toolCalls: [{ name: "tool_touch_file", input: { path: "done.txt", content: "ok" } }]
       })
     ]);
 
@@ -149,9 +146,9 @@ describe("agent plan mode", () => {
           }
         ]
       }),
-      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
-      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
-      JSON.stringify({ version: "v1", task_id: "t1", rationale: "noop", actions: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
+      JSON.stringify({ toolCalls: [{ name: "tool_noop", input: {} }] }),
       JSON.stringify({
         version: "v2",
         reason: "let us skip acceptance",

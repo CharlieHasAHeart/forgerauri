@@ -1,7 +1,7 @@
 // Orchestrates the plan-first loop: Plan -> Execute -> Review -> Replan.
-import { proposePlan, proposeTaskActionPlan } from "../planning/planner.js";
+import { proposePlan } from "../planning/planner.js";
+import { proposeToolCallsForTask } from "../planning/tool_call_planner.js";
 import { PLAN_INSTRUCTIONS } from "../planning/prompts.js";
-import { renderToolIndex } from "../planning/tool_index.js";
 import { getNextReadyTask, summarizePlan } from "../plan/selectors.js";
 import type { PlanTask } from "../plan/schema.js";
 import type { AgentPolicy } from "../policy/policy.js";
@@ -108,36 +108,62 @@ export const runPlanFirstAgent = async (args: {
 
     while (!taskDone && attempts < policy.budgets.max_retries_per_task) {
       attempts += 1;
-      const actionPlan = await proposeTaskActionPlan({
-        goal: state.goal,
-        provider,
-        policy,
-        task: nextTask,
-        planSummary: summarizePlan(currentPlan),
-        stateSummary: {
-          ...(summarizeState(state) as Record<string, unknown>),
-          currentTask: nextTask
-        },
-        toolIndex: renderToolIndex(registry),
-        recentFailures: taskFailures.get(nextTask.id) ?? [],
-        previousResponseId: state.lastResponseId,
-        instructions:
-          "Plan mode task execution: return TaskActionPlanV1 JSON for this task only. Do not modify global plan here.",
-        truncation: state.flags.truncation,
-        contextManagement:
-          typeof state.flags.compactionThreshold === "number"
-            ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
-            : undefined
-      });
-      state.lastResponseId = actionPlan.responseId ?? state.lastResponseId;
+      const planSummary = summarizePlan(currentPlan);
+      const stateSummary = {
+        ...(summarizeState(state) as Record<string, unknown>),
+        currentTask: nextTask
+      };
+      const recentFailures = taskFailures.get(nextTask.id) ?? [];
 
-      let toolCalls = actionPlan.actionPlan.actions.map((item) => ({ name: item.name, input: item.input }));
+      let toolCalls: Array<{ name: string; input: unknown }> = [];
+      let plannerRaw = "";
+      let plannerResponseId: string | undefined;
+      let plannerUsage: unknown;
+      let plannerPreviousResponseIdSent: string | undefined;
+
+      try {
+        const proposal = await proposeToolCallsForTask({
+          goal: state.goal,
+          provider,
+          policy,
+          task: nextTask,
+          planSummary,
+          stateSummary,
+          registry,
+          recentFailures,
+          maxToolCallsPerTurn,
+          previousResponseId: state.lastResponseId,
+          truncation: state.flags.truncation,
+          contextManagement:
+            typeof state.flags.compactionThreshold === "number"
+              ? [{ type: "compaction", compactThreshold: state.flags.compactionThreshold }]
+              : undefined
+        });
+        plannerRaw = proposal.raw;
+        plannerResponseId = proposal.responseId;
+        plannerUsage = proposal.usage;
+        plannerPreviousResponseIdSent = proposal.previousResponseIdSent;
+        toolCalls = proposal.toolCalls;
+      } catch (error) {
+        state.status = "failed";
+        state.phase = "FAILED";
+        setStateError(
+          state,
+          "Unknown",
+          `Failed to propose tool calls for task '${nextTask.id}': ${error instanceof Error ? error.message : "unknown error"}`
+        );
+        break;
+      }
+
+      state.lastResponseId = plannerResponseId ?? state.lastResponseId;
+
       toolCalls = toolCalls.slice(0, Math.min(maxToolCallsPerTurn, policy.budgets.max_actions_per_task));
+      const actionPlanActions = toolCalls.map((item) => ({ name: item.name }));
       state.status = "executing";
 
       const executed = await executeActionPlan({
         toolCalls,
-        actionPlanActions: actionPlan.actionPlan.actions,
+        actionPlanActions,
         registry,
         ctx,
         state,
@@ -151,10 +177,10 @@ export const runPlanFirstAgent = async (args: {
         audit,
         turn,
         taskId: nextTask.id,
-        llmRaw: actionPlan.raw,
-        previousResponseIdSent: actionPlan.previousResponseIdSent,
-        responseId: actionPlan.responseId,
-        usage: actionPlan.usage,
+        llmRaw: plannerRaw,
+        previousResponseIdSent: plannerPreviousResponseIdSent,
+        responseId: plannerResponseId,
+        usage: plannerUsage,
         toolCalls,
         toolResults: executed.turnAuditResults
       });
