@@ -38,7 +38,6 @@ describe("task tool-call planner", () => {
         title: "Bootstrap",
         description: "Bootstrap project",
         dependencies: [],
-        tool_hints: [],
         success_criteria: [{ type: "tool_result", tool_name: "tool_bootstrap_project", expected_ok: true }],
         task_type: "build"
       },

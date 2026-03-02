@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { LlmProvider } from "../../llm/provider.js";
 import type { AgentPolicy } from "../policy/policy.js";
-import type { PlanChangeRequestV2, PlanV1, SuccessCriteria } from "../plan/schema.js";
+import type { PlanChangeRequestV2, PlanV1 } from "../plan/schema.js";
 import { planChangeRequestV2Schema, planV1Schema } from "../plan/schema.js";
 import { llmJson } from "./json_extract.js";
 import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS } from "./prompts.js";
@@ -87,7 +87,6 @@ const emitPlanV1Parameters: Record<string, unknown> = {
           title: { type: "string" },
           description: { type: "string" },
           dependencies: { type: "array", items: { type: "string" } },
-          tool_hints: { type: "array", items: { type: "string" } },
           success_criteria: {
             type: "array",
             minItems: 1,
@@ -105,7 +104,7 @@ const emitPlanV1Parameters: Record<string, unknown> = {
             enum: ["build", "codegen", "test", "debug", "verify", "repair", "design", "materialize", "other"]
           }
         },
-        required: ["id", "title", "description", "dependencies", "tool_hints", "success_criteria"]
+        required: ["id", "title", "description", "dependencies", "success_criteria"]
       }
     }
   },
@@ -184,43 +183,6 @@ const planPromptContent = (args: {
     )}\n` +
     "Every task must include success_criteria with machine-checkable command/file checks."
   );
-};
-
-const normalizePlanForExecution = (plan: PlanV1): PlanV1 => {
-  const tasks = plan.tasks.map((task) => {
-    const normalizedHints = task.tool_hints.filter(
-      (hint) =>
-        hint.startsWith("tool_design_") ||
-        hint.startsWith("tool_materialize_") ||
-        hint === "tool_codegen_from_design"
-    );
-    if (normalizedHints.length === 0) {
-      return task;
-    }
-
-    const filteredCriteria = task.success_criteria.filter(
-      (criterion) => criterion.type !== "file_exists" && criterion.type !== "file_contains"
-    );
-    const existingToolResultNames = new Set(
-      filteredCriteria
-        .filter((criterion): criterion is Extract<SuccessCriteria, { type: "tool_result" }> => criterion.type === "tool_result")
-        .map((criterion) => criterion.tool_name)
-    );
-    const requiredToolResults: SuccessCriteria[] = normalizedHints
-      .filter((toolName) => !existingToolResultNames.has(toolName))
-      .map((toolName) => ({ type: "tool_result" as const, tool_name: toolName, expected_ok: true }));
-    const compatibleCriteria: SuccessCriteria[] = [...requiredToolResults, ...filteredCriteria];
-
-    return {
-      ...task,
-      success_criteria: compatibleCriteria
-    };
-  });
-
-  return {
-    ...plan,
-    tasks
-  };
 };
 
 const proposePlanViaToolCall = async (args: {
@@ -335,7 +297,7 @@ const proposePlanViaToolCall = async (args: {
     try {
       const plan = planV1Schema.parse(candidate);
       return {
-        plan: normalizePlanForExecution(plan),
+        plan,
         raw: lastRaw || JSON.stringify(candidate, null, 2),
         responseId: result.responseId,
         usage: result.usage,
@@ -410,7 +372,7 @@ export const proposePlan = async (args: {
   });
 
   return {
-    plan: normalizePlanForExecution(result.data),
+    plan: result.data,
     raw: result.raw,
     responseId: result.responseId,
     usage: result.usage,

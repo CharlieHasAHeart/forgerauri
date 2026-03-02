@@ -10,7 +10,6 @@ const task = {
   title: "task",
   description: "task",
   dependencies: [],
-  tool_hints: [],
   success_criteria: [{ type: "tool_result" as const, tool_name: "tool_noop", expected_ok: true }],
   task_type: "build" as const
 };
@@ -176,7 +175,7 @@ describe("tool_call_planner", () => {
     expect(out.toolCalls).toHaveLength(1);
   });
 
-  test("restricts planner tools to task tool_hints when provided", async () => {
+  test("exposes full tool set to planner", async () => {
     class HintAwareProvider extends BaseLlmProvider {
       name = "hint-aware";
       seenTools: string[] = [];
@@ -198,7 +197,7 @@ describe("tool_call_planner", () => {
       goal: "goal",
       provider,
       policy,
-      task: { ...task, tool_hints: ["tool_noop"] },
+      task,
       planSummary: {},
       stateSummary: {},
       registry,
@@ -206,7 +205,7 @@ describe("tool_call_planner", () => {
       maxToolCallsPerTurn: 2
     });
 
-    expect(provider.seenTools).toEqual(["tool_noop"]);
-    expect(out.toolCalls).toEqual([]);
+    expect(provider.seenTools).toEqual(["tool_noop", "tool_other"]);
+    expect(out.toolCalls).toEqual([{ name: "tool_other", input: {} }]);
   });
 });

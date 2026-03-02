@@ -45,12 +45,7 @@ export const proposeToolCallsForTask = async (args: {
   mode: "native_tool_calling" | "json_fallback";
 }> => {
   const maxCalls = Math.min(args.maxToolCallsPerTurn, args.policy.budgets.max_actions_per_task);
-  const hintedToolNames = args.task.tool_hints.filter((name) => name in args.registry);
-  const requireToolCall = hintedToolNames.length > 0;
-  const taskRegistry =
-    hintedToolNames.length > 0
-      ? Object.fromEntries(hintedToolNames.map((name) => [name, args.registry[name]]))
-      : args.registry;
+  const taskRegistry = args.registry;
 
   const toolEntries = Object.entries(taskRegistry)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -98,8 +93,7 @@ export const proposeToolCallsForTask = async (args: {
           "Do not modify global plan.",
         previousResponseId: previousResponseIdSent,
         truncation: args.truncation,
-        contextManagement: args.contextManagement,
-        metadata: requireToolCall ? { tool_choice: "required" } : undefined
+        contextManagement: args.contextManagement
       });
       const toolCalls = normalizeCalls(result.toolCalls ?? [], taskRegistry, maxCalls);
       return {

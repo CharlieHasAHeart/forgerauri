@@ -31,7 +31,6 @@ export const planTaskSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
   dependencies: z.array(z.string().min(1)).default([]),
-  tool_hints: z.array(z.string().min(1)).default([]),
   success_criteria: z.array(successCriteriaSchema).min(1),
   task_type: z.enum(["build", "codegen", "test", "debug", "verify", "repair", "design", "materialize", "other"]).default("other")
 });

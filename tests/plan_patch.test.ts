@@ -14,7 +14,6 @@ const basePlan: PlanV1 = {
       title: "one",
       description: "one",
       dependencies: [],
-      tool_hints: [],
       success_criteria: [{ type: "file_exists", path: "a" }],
       task_type: "build"
     },
@@ -23,7 +22,6 @@ const basePlan: PlanV1 = {
       title: "two",
       description: "two",
       dependencies: ["t1"],
-      tool_hints: [],
       success_criteria: [{ type: "file_exists", path: "b" }],
       task_type: "test"
     }

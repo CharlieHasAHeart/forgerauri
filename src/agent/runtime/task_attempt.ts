@@ -33,6 +33,9 @@ const toPositiveInt = (value: unknown): number | undefined => {
   return undefined;
 };
 
+const PLANNER_OUTPUT_INVALID_RETRY_HINT =
+  "PlannerOutputInvalid: toolCalls must be array of {name,input}. input must be a JSON object (not undefined). Fix and return valid tool calls.";
+
 export const runTaskAttempt = async (args: {
   turn: number;
   goal: string;
@@ -99,34 +102,11 @@ export const runTaskAttempt = async (args: {
         policyMaxActionsPerTask: args.policy.budgets.max_actions_per_task
       });
       if (gated.ok) {
-        const hintSet = new Set(args.task.tool_hints ?? []);
-        if (hintSet.size > 0) {
-          const hintedCalls = gated.toolCalls.filter((call) => hintSet.has(call.name));
-          if (hintedCalls.length === 0) {
-            const hintMessage = `PlannerOutputInvalid: task '${args.task.id}' must use hinted tools only: ${Array.from(hintSet).join(", ")}`;
-            plannerRecentFailures.push(hintMessage);
-            if (planTry >= 2) {
-              args.state.status = "failed";
-              setStateError(args.state, "Config", hintMessage);
-              return {
-                ok: false,
-                failures: [hintMessage],
-                toolCalls: [],
-                turnAuditResults: []
-              };
-            }
-            continue;
-          }
-          toolCalls = hintedCalls;
-        } else {
-          toolCalls = gated.toolCalls;
-        }
+        toolCalls = gated.toolCalls;
         break;
       }
 
-      plannerRecentFailures.push(
-        "PlannerOutputInvalid: toolCalls must be array of {name,input}. input must be a JSON object (not undefined). Fix and return valid tool calls."
-      );
+      plannerRecentFailures.push(PLANNER_OUTPUT_INVALID_RETRY_HINT);
 
       if (planTry >= 2) {
         args.state.status = "failed";
@@ -152,9 +132,7 @@ export const runTaskAttempt = async (args: {
           turnAuditResults: []
         };
       }
-      plannerRecentFailures.push(
-        "PlannerOutputInvalid: toolCalls must be array of {name,input}. input must be a JSON object (not undefined). Fix and return valid tool calls."
-      );
+      plannerRecentFailures.push(PLANNER_OUTPUT_INVALID_RETRY_HINT);
     }
   }
 
