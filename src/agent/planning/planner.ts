@@ -189,7 +189,10 @@ const planPromptContent = (args: {
 const normalizePlanForExecution = (plan: PlanV1): PlanV1 => {
   const tasks = plan.tasks.map((task) => {
     const normalizedHints = task.tool_hints.filter(
-      (hint) => hint.startsWith("tool_design_") || hint.startsWith("tool_materialize_")
+      (hint) =>
+        hint.startsWith("tool_design_") ||
+        hint.startsWith("tool_materialize_") ||
+        hint === "tool_codegen_from_design"
     );
     if (normalizedHints.length === 0) {
       return task;
