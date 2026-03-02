@@ -13,6 +13,26 @@ import { recordTaskActionPlan } from "./recorder.js";
 import { summarizeState } from "./state.js";
 import { gateToolCalls } from "./toolcall_gate.js";
 
+const parseMaybeJson = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!(trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("\""))) return value;
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return value;
+  }
+};
+
+const toPositiveInt = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
+  if (typeof value === "string") {
+    const n = Number.parseInt(value.trim(), 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return undefined;
+};
+
 export const runTaskAttempt = async (args: {
   turn: number;
   goal: string;
@@ -79,7 +99,28 @@ export const runTaskAttempt = async (args: {
         policyMaxActionsPerTask: args.policy.budgets.max_actions_per_task
       });
       if (gated.ok) {
-        toolCalls = gated.toolCalls;
+        const hintSet = new Set(args.task.tool_hints ?? []);
+        if (hintSet.size > 0) {
+          const hintedCalls = gated.toolCalls.filter((call) => hintSet.has(call.name));
+          if (hintedCalls.length === 0) {
+            const hintMessage = `PlannerOutputInvalid: task '${args.task.id}' must use hinted tools only: ${Array.from(hintSet).join(", ")}`;
+            plannerRecentFailures.push(hintMessage);
+            if (planTry >= 2) {
+              args.state.status = "failed";
+              setStateError(args.state, "Config", hintMessage);
+              return {
+                ok: false,
+                failures: [hintMessage],
+                toolCalls: [],
+                turnAuditResults: []
+              };
+            }
+            continue;
+          }
+          toolCalls = hintedCalls;
+        } else {
+          toolCalls = gated.toolCalls;
+        }
         break;
       }
 
@@ -163,6 +204,18 @@ export const runTaskAttempt = async (args: {
       case "tool_repair_once":
         if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
         break;
+      case "tool_read_files": {
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        const globs = parseMaybeJson(inputObj.globs);
+        if (Array.isArray(globs)) {
+          inputObj.globs = globs.map((value) => String(value));
+        }
+        const maxChars = toPositiveInt(inputObj.maxChars);
+        if (maxChars !== undefined) {
+          inputObj.maxChars = maxChars;
+        }
+        break;
+      }
       default:
         break;
     }
