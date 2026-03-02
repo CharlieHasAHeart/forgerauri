@@ -41,7 +41,10 @@ class DashScopePlanToolCallProvider extends BaseLlmProvider {
                 title: "Bootstrap",
                 description: "Create base",
                 dependencies: [],
-                success_criteria: [{ type: "file_exists", path: "README.md" }]
+                success_criteria: [
+                  { type: "file_exists", path: "README.md" },
+                  { type: "file_contains", path: "design/contract.json", contains: "\"version\"" }
+                ]
               }
             ]
           }
@@ -180,6 +183,11 @@ describe("planner dashscope tool-calling path", () => {
 
     expect(provider.calls).toBe(1);
     expect(result.plan.tasks[0]?.id).toBe("t1");
+    expect(result.plan.tasks[0]?.success_criteria[1]).toEqual({
+      type: "file_contains",
+      path: "forgetauri.contract.json",
+      contains: "\"version\""
+    });
   });
 
   test("proposePlan retries and fails after invalid tool-call plan output", async () => {

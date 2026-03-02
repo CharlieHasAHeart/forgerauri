@@ -181,9 +181,32 @@ const planPromptContent = (args: {
       null,
       2
     )}\n` +
-    "Every task must include success_criteria with machine-checkable command/file checks."
+    "Every task must include success_criteria with machine-checkable command/file checks. " +
+    "For contract artifact checks, use path 'forgetauri.contract.json' (not legacy 'design/contract.json')."
   );
 };
+
+const normalizeCriteriaPath = (path: string): string => {
+  const normalized = path.trim().replace(/\\/g, "/");
+  if (normalized === "design/contract.json") return "forgetauri.contract.json";
+  return path;
+};
+
+const normalizePlanForExecution = (plan: PlanV1): PlanV1 => ({
+  ...plan,
+  tasks: plan.tasks.map((task) => ({
+    ...task,
+    success_criteria: task.success_criteria.map((criterion) => {
+      if (criterion.type === "file_exists") {
+        return { ...criterion, path: normalizeCriteriaPath(criterion.path) };
+      }
+      if (criterion.type === "file_contains") {
+        return { ...criterion, path: normalizeCriteriaPath(criterion.path) };
+      }
+      return criterion;
+    })
+  }))
+});
 
 const proposePlanViaToolCall = async (args: {
   goal: string;
@@ -297,7 +320,7 @@ const proposePlanViaToolCall = async (args: {
     try {
       const plan = planV1Schema.parse(candidate);
       return {
-        plan,
+        plan: normalizePlanForExecution(plan),
         raw: lastRaw || JSON.stringify(candidate, null, 2),
         responseId: result.responseId,
         usage: result.usage,
@@ -372,7 +395,7 @@ export const proposePlan = async (args: {
   });
 
   return {
-    plan: result.data,
+    plan: normalizePlanForExecution(result.data),
     raw: result.raw,
     responseId: result.responseId,
     usage: result.usage,
