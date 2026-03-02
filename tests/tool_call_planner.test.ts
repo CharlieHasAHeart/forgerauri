@@ -27,6 +27,18 @@ const registry: Record<string, ToolSpec<any>> = {
     docs: "",
     run: async () => ({ ok: true, data: {}, meta: { touchedPaths: [] } }),
     examples: []
+  },
+  tool_other: {
+    name: "tool_other",
+    description: "other",
+    inputSchema: z.object({}).passthrough(),
+    inputJsonSchema: { type: "object" },
+    category: "low",
+    capabilities: [],
+    safety: { sideEffects: "none" },
+    docs: "",
+    run: async () => ({ ok: true, data: {}, meta: { touchedPaths: [] } }),
+    examples: []
   }
 };
 
@@ -162,5 +174,39 @@ describe("tool_call_planner", () => {
     });
 
     expect(out.toolCalls).toHaveLength(1);
+  });
+
+  test("restricts planner tools to task tool_hints when provided", async () => {
+    class HintAwareProvider extends BaseLlmProvider {
+      name = "hint-aware";
+      seenTools: string[] = [];
+      async complete(_messages: LlmMessage[], _opts?: LlmCallOptions): Promise<LlmResponse> {
+        return { text: "{}", raw: {} };
+      }
+      async completeToolCalls(
+        _messages: LlmMessage[],
+        tools: Array<{ name: string; description: string; inputJsonSchema: unknown }>,
+        _opts?: LlmCallOptions
+      ): Promise<{ toolCalls: Array<{ name: string; input: unknown }>; text?: string; raw?: string }> {
+        this.seenTools = tools.map((tool) => tool.name);
+        return { toolCalls: [{ name: "tool_other", input: {} }], text: "native" };
+      }
+    }
+
+    const provider = new HintAwareProvider();
+    const out = await proposeToolCallsForTask({
+      goal: "goal",
+      provider,
+      policy,
+      task: { ...task, tool_hints: ["tool_noop"] },
+      planSummary: {},
+      stateSummary: {},
+      registry,
+      recentFailures: [],
+      maxToolCallsPerTurn: 2
+    });
+
+    expect(provider.seenTools).toEqual(["tool_noop"]);
+    expect(out.toolCalls).toEqual([]);
   });
 });

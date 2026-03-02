@@ -45,8 +45,13 @@ export const proposeToolCallsForTask = async (args: {
   mode: "native_tool_calling" | "json_fallback";
 }> => {
   const maxCalls = Math.min(args.maxToolCallsPerTurn, args.policy.budgets.max_actions_per_task);
+  const hintedToolNames = args.task.tool_hints.filter((name) => name in args.registry);
+  const taskRegistry =
+    hintedToolNames.length > 0
+      ? Object.fromEntries(hintedToolNames.map((name) => [name, args.registry[name]]))
+      : args.registry;
 
-  const toolEntries = Object.entries(args.registry)
+  const toolEntries = Object.entries(taskRegistry)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, tool]) => ({
       name,
@@ -73,7 +78,7 @@ export const proposeToolCallsForTask = async (args: {
           null,
           2
         )}\n\n` +
-        `Tool index:\n${renderToolIndex(args.registry)}\n\n` +
+        `Tool index:\n${renderToolIndex(taskRegistry)}\n\n` +
         `Constraints:\n- maxToolCalls=${maxCalls}\n- Only use tool names from the provided tool list.\n` +
         "- For path-like fields (specPath/outDir/projectRoot), use the authoritative runtime context values exactly.\n"
     }
@@ -94,7 +99,7 @@ export const proposeToolCallsForTask = async (args: {
         truncation: args.truncation,
         contextManagement: args.contextManagement
       });
-      const toolCalls = normalizeCalls(result.toolCalls ?? [], args.registry, maxCalls);
+      const toolCalls = normalizeCalls(result.toolCalls ?? [], taskRegistry, maxCalls);
       return {
         toolCalls,
         raw: result.raw ?? result.text ?? JSON.stringify(toolCalls, null, 2),
@@ -126,7 +131,7 @@ export const proposeToolCallsForTask = async (args: {
   });
 
   return {
-    toolCalls: normalizeCalls(result.data.toolCalls, args.registry, maxCalls),
+    toolCalls: normalizeCalls(result.data.toolCalls, taskRegistry, maxCalls),
     raw: result.raw,
     responseId: result.responseId,
     usage: result.usage,
