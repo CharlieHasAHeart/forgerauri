@@ -8,6 +8,51 @@ import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS } from "./p
 import { renderToolIndex } from "./tool_index.js";
 import type { ToolSpec } from "../tools/types.js";
 
+const successCriteriaCommandSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    type: { type: "string", enum: ["command"] },
+    cmd: { type: "string" },
+    args: { type: "array", items: { type: "string" } },
+    cwd: { type: "string" },
+    expect_exit_code: { type: "integer" }
+  },
+  required: ["type", "cmd"]
+};
+
+const successCriteriaFileExistsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    type: { type: "string", enum: ["file_exists"] },
+    path: { type: "string" }
+  },
+  required: ["type", "path"]
+};
+
+const successCriteriaFileContainsSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    type: { type: "string", enum: ["file_contains"] },
+    path: { type: "string" },
+    contains: { type: "string" }
+  },
+  required: ["type", "path", "contains"]
+};
+
+const successCriteriaToolResultSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    type: { type: "string", enum: ["tool_result"] },
+    tool_name: { type: "string" },
+    expected_ok: { type: "boolean" }
+  },
+  required: ["type", "tool_name"]
+};
+
 const emitPlanV1Parameters: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
@@ -18,6 +63,7 @@ const emitPlanV1Parameters: Record<string, unknown> = {
     tech_stack_locked: { type: "boolean" },
     milestones: {
       type: "array",
+      minItems: 0,
       items: {
         type: "object",
         additionalProperties: false,
@@ -32,6 +78,7 @@ const emitPlanV1Parameters: Record<string, unknown> = {
     },
     tasks: {
       type: "array",
+      minItems: 1,
       items: {
         type: "object",
         additionalProperties: false,
@@ -43,13 +90,14 @@ const emitPlanV1Parameters: Record<string, unknown> = {
           tool_hints: { type: "array", items: { type: "string" } },
           success_criteria: {
             type: "array",
+            minItems: 1,
             items: {
-              type: "object",
-              additionalProperties: true,
-              properties: {
-                type: { type: "string" }
-              },
-              required: ["type"]
+              oneOf: [
+                successCriteriaCommandSchema,
+                successCriteriaFileExistsSchema,
+                successCriteriaFileContainsSchema,
+                successCriteriaToolResultSchema
+              ]
             }
           },
           task_type: {
@@ -57,7 +105,7 @@ const emitPlanV1Parameters: Record<string, unknown> = {
             enum: ["build", "codegen", "test", "debug", "verify", "repair", "design", "materialize", "other"]
           }
         },
-        required: ["id", "title", "description", "success_criteria"]
+        required: ["id", "title", "description", "dependencies", "tool_hints", "success_criteria"]
       }
     }
   },
@@ -226,7 +274,8 @@ const proposePlanViaToolCall = async (args: {
           role: "user",
           content:
             "Your emit_plan_v1 arguments did not match PlanV1 schema. " +
-            `Fix ONLY the JSON. Errors: ${summarizeIssues(error)}`
+            "Fix ONLY the JSON. Do not quote booleans, arrays, or objects. " +
+            `Errors: ${summarizeIssues(error)}`
         }
       ];
     }
