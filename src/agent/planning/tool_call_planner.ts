@@ -71,14 +71,16 @@ export const proposeToolCallsForTask = async (args: {
 
   if (typeof args.provider.completeToolCalls === "function") {
     try {
-      const previousResponseIdSent = args.previousResponseId;
+      const previousResponseIdSent =
+        args.provider.name === "dashscope_responses" ? undefined : args.previousResponseId;
       const result = await args.provider.completeToolCalls(messages, toolEntries, {
         temperature: 0,
         maxOutputTokens: 3200,
+        enableThinking: false,
         instructions:
           "You are task execution planner. Produce tool calls for the current step only. " +
           "Do not modify global plan.",
-        previousResponseId: args.previousResponseId,
+        previousResponseId: previousResponseIdSent,
         truncation: args.truncation,
         contextManagement: args.contextManagement
       });
@@ -122,4 +124,3 @@ export const proposeToolCallsForTask = async (args: {
     mode: "json_fallback"
   };
 };
-
