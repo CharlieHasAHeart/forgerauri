@@ -217,13 +217,44 @@ export const runTaskAttempt = async (args: {
         if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
         break;
       case "tool_materialize_contract":
+        inputObj.contract = parseMaybeJson(inputObj.contract);
+        if (
+          (!inputObj.contract || typeof inputObj.contract !== "object" || Array.isArray(inputObj.contract)) &&
+          args.state.contract
+        ) {
+          inputObj.contract = args.state.contract;
+        }
         inputObj.outDir = runtimeOutDir;
         inputObj.apply = runtimeApply;
         if (runtimeProjectRoot) inputObj.appDir = runtimeProjectRoot;
         break;
       case "tool_materialize_ux":
+        inputObj.ux = parseMaybeJson(inputObj.ux);
+        if ((!inputObj.ux || typeof inputObj.ux !== "object" || Array.isArray(inputObj.ux)) && args.state.ux) {
+          inputObj.ux = args.state.ux;
+        }
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        inputObj.apply = runtimeApply;
+        break;
       case "tool_materialize_implementation":
+        inputObj.impl = parseMaybeJson(inputObj.impl);
+        if ((!inputObj.impl || typeof inputObj.impl !== "object" || Array.isArray(inputObj.impl)) && args.state.impl) {
+          inputObj.impl = args.state.impl;
+        }
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        inputObj.apply = runtimeApply;
+        break;
       case "tool_materialize_delivery":
+        inputObj.delivery = parseMaybeJson(inputObj.delivery);
+        if (
+          (!inputObj.delivery || typeof inputObj.delivery !== "object" || Array.isArray(inputObj.delivery)) &&
+          args.state.delivery
+        ) {
+          inputObj.delivery = args.state.delivery;
+        }
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        inputObj.apply = runtimeApply;
+        break;
       case "tool_validate_design":
       case "tool_codegen_from_design":
       case "tool_verify_project":
