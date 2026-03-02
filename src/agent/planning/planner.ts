@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { LlmProvider } from "../../llm/provider.js";
 import type { AgentPolicy } from "../policy/policy.js";
-import type { PlanChangeRequestV2, PlanV1 } from "../plan/schema.js";
+import type { PlanChangeRequestV2, PlanV1, SuccessCriteria } from "../plan/schema.js";
 import { planChangeRequestV2Schema, planV1Schema } from "../plan/schema.js";
 import { llmJson } from "./json_extract.js";
 import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS } from "./prompts.js";
@@ -174,6 +174,40 @@ const planPromptContent = (args: {
   );
 };
 
+const normalizePlanForExecution = (plan: PlanV1): PlanV1 => {
+  const tasks = plan.tasks.map((task) => {
+    const hasDesignContractHint = task.tool_hints.includes("tool_design_contract");
+    if (!hasDesignContractHint) {
+      return task;
+    }
+
+    const hasDesignContractToolResult = task.success_criteria.some(
+      (criterion) => criterion.type === "tool_result" && criterion.tool_name === "tool_design_contract"
+    );
+    if (hasDesignContractToolResult) {
+      return task;
+    }
+
+    const filteredCriteria = task.success_criteria.filter(
+      (criterion) => criterion.type !== "file_exists" && criterion.type !== "file_contains"
+    );
+    const compatibleCriteria: SuccessCriteria[] = [
+      { type: "tool_result", tool_name: "tool_design_contract", expected_ok: true },
+      ...filteredCriteria
+    ];
+
+    return {
+      ...task,
+      success_criteria: compatibleCriteria
+    };
+  });
+
+  return {
+    ...plan,
+    tasks
+  };
+};
+
 const proposePlanViaToolCall = async (args: {
   goal: string;
   provider: LlmProvider;
@@ -286,7 +320,7 @@ const proposePlanViaToolCall = async (args: {
     try {
       const plan = planV1Schema.parse(candidate);
       return {
-        plan,
+        plan: normalizePlanForExecution(plan),
         raw: lastRaw || JSON.stringify(candidate, null, 2),
         responseId: result.responseId,
         usage: result.usage,
@@ -361,7 +395,7 @@ export const proposePlan = async (args: {
   });
 
   return {
-    plan: result.data,
+    plan: normalizePlanForExecution(result.data),
     raw: result.raw,
     responseId: result.responseId,
     usage: result.usage,
@@ -388,33 +422,58 @@ export const proposePlanChange = async (args: {
   previousResponseIdSent?: string;
 }> => {
   const instructions = args.instructions ?? DEFAULT_PLAN_CHANGE_INSTRUCTIONS;
+  const baseMessages = [
+    {
+      role: "user" as const,
+      content:
+        `Goal:\n${args.goal}\n\n` +
+        `Current plan:\n${JSON.stringify(args.currentPlan, null, 2)}\n\n` +
+        `Policy:\n${JSON.stringify(args.policy, null, 2)}\n\n` +
+        `Failure evidence:\n${JSON.stringify(args.failureEvidence, null, 2)}\n\n` +
+        `State summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n` +
+        "Return PlanChangeRequestV2 JSON only."
+    }
+  ];
 
-  const result = await llmJson({
-    provider: args.provider,
-    schema: planChangeRequestV2Schema,
-    instructions,
-    previousResponseId: args.previousResponseId,
-    truncation: args.truncation,
-    contextManagement: args.contextManagement,
-    messages: [
-      {
-        role: "user",
-        content:
-          `Goal:\n${args.goal}\n\n` +
-          `Current plan:\n${JSON.stringify(args.currentPlan, null, 2)}\n\n` +
-          `Policy:\n${JSON.stringify(args.policy, null, 2)}\n\n` +
-          `Failure evidence:\n${JSON.stringify(args.failureEvidence, null, 2)}\n\n` +
-          `State summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n` +
-          "Return PlanChangeRequestV2 JSON only."
-      }
-    ]
-  });
+  let messages = [...baseMessages];
+  let lastError: unknown = undefined;
+  let lastResponseId: string | undefined = args.previousResponseId;
 
-  return {
-    changeRequest: result.data,
-    raw: result.raw,
-    responseId: result.responseId,
-    usage: result.usage,
-    previousResponseIdSent: result.previousResponseIdSent
-  };
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const result = await llmJson({
+        provider: args.provider,
+        schema: planChangeRequestV2Schema,
+        instructions,
+        previousResponseId: lastResponseId,
+        truncation: args.truncation,
+        contextManagement: args.contextManagement,
+        messages
+      });
+
+      return {
+        changeRequest: result.data,
+        raw: result.raw,
+        responseId: result.responseId,
+        usage: result.usage,
+        previousResponseIdSent: result.previousResponseIdSent
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt === 3) break;
+
+      messages = [
+        ...messages,
+        {
+          role: "user" as const,
+          content:
+            "Your output did not match PlanChangeRequestV2. " +
+            "Fix ONLY the JSON. Required fields: version='v2', reason:string, change_type(enum), impact:{steps_delta:number,risk:string}, patch:array. " +
+            `Last error: ${error instanceof Error ? error.message : String(error)}`
+        }
+      ];
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to produce valid PlanChangeRequestV2 after retries");
 };
