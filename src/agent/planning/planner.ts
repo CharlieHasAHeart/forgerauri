@@ -155,11 +155,23 @@ const planPromptContent = (args: {
   maxToolCallsPerTurn: number;
 }): string => {
   const toolIndex = renderToolIndex(args.registry);
+  const suggestedRoute = [
+    "1) bootstrap workspace with tool_bootstrap_project",
+    "2) design contracts with tool_design_contract",
+    "3) design UX with tool_design_ux",
+    "4) design implementation with tool_design_implementation",
+    "5) design delivery with tool_design_delivery",
+    "6) materialize contract/ux/implementation/delivery with corresponding tool_materialize_* tools",
+    "7) validate design consistency with tool_validate_design",
+    "8) deterministic codegen with tool_codegen_from_design",
+    "9) verify with tool_verify_project, then repair via tool_repair_known_issues / tool_repair_once only if verify fails"
+  ].join("\n");
   return (
     `Create PlanV1 for this goal:\n${args.goal}\n\n` +
     `Tech stack constraints (locked unless user allows):\n${JSON.stringify(args.policy, null, 2)}\n\n` +
     `Tool index:\n${toolIndex}\n\n` +
     `Repo state summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
+    `Suggested default route (guidance only, adapt when evidence requires):\n${suggestedRoute}\n\n` +
     `Planning constraints:\n${JSON.stringify(
       {
         maxSteps: args.policy.budgets.max_steps,
