@@ -125,7 +125,6 @@ const proposePlanViaToolCall = async (args: {
     inputJsonSchema: emitPlanV1Parameters
   };
 
-  let previousResponseId = args.previousResponseId;
   let lastRaw = "";
   let lastUsage: unknown;
   let previousResponseIdSent: string | undefined;
@@ -142,7 +141,7 @@ const proposePlanViaToolCall = async (args: {
   ];
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const sentPreviousResponseId = previousResponseId;
+    const sentPreviousResponseId = undefined;
     const result = await args.provider.completeToolCalls(messages, [tool], {
       temperature: 0,
       maxOutputTokens: 4500,
@@ -164,10 +163,6 @@ const proposePlanViaToolCall = async (args: {
     const planCall = calls.find((call) => call?.name === "emit_plan_v1");
     if (!planCall) {
       // DashScope may return a failed response id that cannot be resumed.
-      if (lastRaw.includes("Not found previous_response_id")) {
-        previousResponseId = undefined;
-      }
-
       if (attempt === 3) {
         throw new Error(
           `emit_plan_v1 was not called after retries. lastRaw=${lastRaw.slice(0, 800)} usage=${JSON.stringify(
@@ -188,9 +183,6 @@ const proposePlanViaToolCall = async (args: {
       ];
       continue;
     }
-
-    // Only continue response-id chain when model returned the expected function call.
-    previousResponseId = result.responseId ?? previousResponseId;
 
     const candidate = planCall.input;
     if (!candidate || typeof candidate !== "object") {
