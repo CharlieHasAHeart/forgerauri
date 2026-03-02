@@ -160,13 +160,14 @@ const proposePlanViaToolCall = async (args: {
     lastRaw = result.raw ?? result.text ?? "";
 
     const calls = result.toolCalls ?? [];
-    if (calls.length !== 1 || calls[0]?.name !== "emit_plan_v1") {
-      const summary = `expected exactly one tool call 'emit_plan_v1', got ${calls
-        .map((call) => call.name)
-        .join(", ") || "<none>"}`;
-
+    const planCall = calls.find((call) => call?.name === "emit_plan_v1");
+    if (!planCall) {
       if (attempt === 3) {
-        throw new Error(`Invalid tool-call plan output: ${summary}`);
+        throw new Error(
+          `emit_plan_v1 was not called after retries. lastRaw=${lastRaw.slice(0, 800)} usage=${JSON.stringify(
+            lastUsage
+          )} previousResponseIdSent=${previousResponseIdSent ?? ""}`
+        );
       }
 
       messages = [
@@ -174,14 +175,36 @@ const proposePlanViaToolCall = async (args: {
         {
           role: "user",
           content:
-            "Invalid function call behavior. You MUST call function emit_plan_v1 exactly once " +
-            `and return PlanV1 in its arguments. Error: ${summary}`
+            "You did not call function emit_plan_v1. " +
+            "You MUST call emit_plan_v1 exactly once and provide PlanV1 as its arguments. " +
+            "Return no extra text."
         }
       ];
       continue;
     }
 
-    const candidate = calls[0].input;
+    const candidate = planCall.input;
+    if (!candidate || typeof candidate !== "object") {
+      if (attempt === 3) {
+        throw new Error(
+          `emit_plan_v1 arguments missing after retries. lastRaw=${lastRaw.slice(0, 800)} usage=${JSON.stringify(
+            lastUsage
+          )} previousResponseIdSent=${previousResponseIdSent ?? ""}`
+        );
+      }
+
+      messages = [
+        ...messages,
+        {
+          role: "user",
+          content:
+            "emit_plan_v1 arguments were missing or invalid. " +
+            "You MUST call emit_plan_v1 exactly once and provide PlanV1 as its arguments. " +
+            "Return no extra text."
+        }
+      ];
+      continue;
+    }
     try {
       const plan = planV1Schema.parse(candidate);
       return {
