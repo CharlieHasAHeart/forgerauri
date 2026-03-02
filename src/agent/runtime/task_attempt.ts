@@ -130,6 +130,18 @@ export const runTaskAttempt = async (args: {
     if (inputObj.outDir === undefined || String(inputObj.outDir).trim().length === 0) {
       inputObj.outDir = args.ctx.memory.outDir ?? args.state.outDir;
     }
+    if (typeof inputObj.specPath === "string") {
+      inputObj.specPath = inputObj.specPath.trim();
+    }
+    if (typeof inputObj.outDir === "string") {
+      inputObj.outDir = inputObj.outDir.trim();
+    }
+
+    if (typeof inputObj.apply === "string") {
+      const normalized = inputObj.apply.trim().toLowerCase();
+      if (normalized === "true") inputObj.apply = true;
+      if (normalized === "false") inputObj.apply = false;
+    }
     if (inputObj.apply === undefined) {
       inputObj.apply = args.state.flags.apply;
     }
