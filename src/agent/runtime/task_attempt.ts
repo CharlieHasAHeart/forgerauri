@@ -119,15 +119,53 @@ export const runTaskAttempt = async (args: {
 
   // Deterministic injection for bootstrap tool required inputs
   toolCalls = toolCalls.map((call) => {
-    if (call.name !== "tool_bootstrap_project") return call;
-
     const rawInput = (call as { input: unknown }).input;
     const inputObj = rawInput && typeof rawInput === "object" ? (rawInput as Record<string, unknown>) : {};
+    const runtimeSpecPath = args.ctx.memory.specPath ?? args.state.specPath;
+    const runtimeOutDir = args.ctx.memory.outDir ?? args.state.outDir;
+    const runtimeProjectRoot = args.state.appDir ?? args.state.projectRoot;
+    const runtimeApply = args.state.flags.apply;
 
-    // Bootstrap path/apply are runtime truths; never trust model-provided values here.
-    inputObj.specPath = args.ctx.memory.specPath ?? args.state.specPath;
-    inputObj.outDir = args.ctx.memory.outDir ?? args.state.outDir;
-    inputObj.apply = args.state.flags.apply;
+    switch (call.name) {
+      case "tool_bootstrap_project":
+        // Bootstrap path/apply are runtime truths; never trust model-provided values here.
+        inputObj.specPath = runtimeSpecPath;
+        inputObj.outDir = runtimeOutDir;
+        inputObj.apply = runtimeApply;
+        break;
+      case "tool_design_contract":
+        inputObj.specPath = runtimeSpecPath;
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        break;
+      case "tool_design_ux":
+        inputObj.specPath = runtimeSpecPath;
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        break;
+      case "tool_design_implementation":
+      case "tool_design_delivery":
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        break;
+      case "tool_materialize_contract":
+        inputObj.outDir = runtimeOutDir;
+        inputObj.apply = runtimeApply;
+        if (runtimeProjectRoot) inputObj.appDir = runtimeProjectRoot;
+        break;
+      case "tool_materialize_ux":
+      case "tool_materialize_implementation":
+      case "tool_materialize_delivery":
+      case "tool_validate_design":
+      case "tool_codegen_from_design":
+      case "tool_verify_project":
+      case "tool_repair_known_issues":
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        inputObj.apply = runtimeApply;
+        break;
+      case "tool_repair_once":
+        if (runtimeProjectRoot) inputObj.projectRoot = runtimeProjectRoot;
+        break;
+      default:
+        break;
+    }
 
     return { ...call, input: inputObj };
   });

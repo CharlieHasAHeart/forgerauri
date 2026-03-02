@@ -64,8 +64,18 @@ export const proposeToolCallsForTask = async (args: {
         `Plan summary:\n${JSON.stringify(args.planSummary, null, 2)}\n\n` +
         `State summary:\n${JSON.stringify(args.stateSummary, null, 2)}\n\n` +
         `Recent failures:\n${JSON.stringify(args.recentFailures, null, 2)}\n\n` +
+        `Authoritative runtime context (must be reused exactly):\n${JSON.stringify(
+          {
+            specPath: (args.stateSummary as Record<string, unknown>)?.specPath,
+            outDir: (args.stateSummary as Record<string, unknown>)?.outDir,
+            appDir: (args.stateSummary as Record<string, unknown>)?.appDir
+          },
+          null,
+          2
+        )}\n\n` +
         `Tool index:\n${renderToolIndex(args.registry)}\n\n` +
-        `Constraints:\n- maxToolCalls=${maxCalls}\n- Only use tool names from the provided tool list.\n`
+        `Constraints:\n- maxToolCalls=${maxCalls}\n- Only use tool names from the provided tool list.\n` +
+        "- For path-like fields (specPath/outDir/projectRoot), use the authoritative runtime context values exactly.\n"
     }
   ];
 
