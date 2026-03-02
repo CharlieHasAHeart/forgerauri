@@ -56,4 +56,27 @@ describe("tool_design_ux", () => {
     const data = result.data as { ux: { screens: Array<{ id: string }> } };
     expect(data.ux.screens[0]?.id).toBe("home");
   });
+
+  test("falls back to deterministic UX when LLM output is invalid", async () => {
+    const provider = new MockProvider(["not json"]);
+
+    const result = await toolPackage.runtime.run(
+      {
+        goal: "Design UX",
+        specPath: "/tmp/spec.json",
+        contract
+      },
+      {
+        provider,
+        runCmdImpl: async () => ({ ok: true, code: 0, stdout: "", stderr: "" }),
+        flags: { apply: true, verify: true, repair: true, maxPatchesPerTurn: 8 },
+        memory: { patchPaths: [], touchedPaths: [] }
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    const data = result.data as { ux: { version: string; screens: Array<{ id: string }> } };
+    expect(data.ux.version).toBe("v1");
+    expect(data.ux.screens.length).toBeGreaterThan(0);
+  });
 });

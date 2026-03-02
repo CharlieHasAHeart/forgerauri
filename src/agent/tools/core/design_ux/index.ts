@@ -16,6 +16,56 @@ const outputSchema = z.object({
   attempts: z.number().int().positive()
 });
 
+const toScreenId = (value: string, fallback: string): string => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+  if (normalized.length === 0 || !/^[a-z]/.test(normalized)) return fallback;
+  return normalized;
+};
+
+const buildSeedUx = (contract: z.infer<typeof contractForUxV1Schema>): UXDesignV1 => {
+  const commandScreens = contract.commands.map((command, index) => {
+    const id = toScreenId(command.name, `screen_${index + 1}`);
+    return {
+      id,
+      title: command.name.replace(/_/g, " "),
+      route: `/${id}`,
+      purpose: command.purpose || `Run ${command.name}`,
+      dataNeeds: [{ source: "command" as const, command: command.name }],
+      actions: [{ label: `Run ${command.name}`, command: command.name }],
+      states: { loading: false, empty: "No data", error: "Failed to load" }
+    };
+  });
+
+  const screens =
+    commandScreens.length > 0
+      ? commandScreens
+      : [
+          {
+            id: "home",
+            title: "Home",
+            route: "/",
+            purpose: "Overview",
+            dataNeeds: [],
+            actions: [],
+            states: { loading: false, empty: "No data", error: "Failed to load" }
+          }
+        ];
+
+  return {
+    version: "v1",
+    navigation: {
+      kind: screens.length > 1 ? "sidebar" : "single",
+      items: screens.map((screen) => ({ id: screen.id, title: screen.title, route: screen.route }))
+    },
+    screens
+  };
+};
+
 export const runDesignUx = async (args: {
   goal: string;
   specPath: string;
@@ -41,16 +91,24 @@ export const runDesignUx = async (args: {
     }
   ];
 
-  const { data, raw, attempts } = await args.provider.completeJSON(messages, uxDesignV1Schema, {
-    temperature: 0,
-    maxOutputTokens: 4000
-  });
+  try {
+    const { data, raw, attempts } = await args.provider.completeJSON(messages, uxDesignV1Schema, {
+      temperature: 0,
+      maxOutputTokens: 4000
+    });
 
-  return {
-    ux: data,
-    attempts,
-    raw
-  };
+    return {
+      ux: data,
+      attempts,
+      raw
+    };
+  } catch (error) {
+    return {
+      ux: buildSeedUx(args.contract),
+      attempts: 1,
+      raw: error instanceof Error ? error.message : "fallback to deterministic seed ux"
+    };
+  }
 };
 
 export const toolPackage: ToolPackage<z.infer<typeof inputSchema>, z.infer<typeof outputSchema>> = {
