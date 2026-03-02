@@ -121,19 +121,29 @@ export const runAgent = async (args: {
     compactionThreshold: state.flags.compactionThreshold
   });
 
-  await runPlanFirstAgent({
-    state,
-    provider,
-    registry,
-    ctx,
-    maxTurns,
-    maxToolCallsPerTurn,
-    audit,
-    policy,
-    humanReview: args.humanReview,
-    requestPlanChangeReview: args.requestPlanChangeReview,
-    onEvent: args.onEvent
-  });
+  let runError: unknown;
+  try {
+    await runPlanFirstAgent({
+      state,
+      provider,
+      registry,
+      ctx,
+      maxTurns,
+      maxToolCallsPerTurn,
+      audit,
+      policy,
+      humanReview: args.humanReview,
+      requestPlanChangeReview: args.requestPlanChangeReview,
+      onEvent: args.onEvent
+    });
+  } catch (error) {
+    runError = error;
+    state.status = "failed";
+    state.lastError = state.lastError ?? {
+      kind: "Unknown",
+      message: error instanceof Error ? error.message : "Unknown error"
+    };
+  }
 
   const base = state.appDir ?? state.outDir;
   const auditPath = await audit.flush(base, {
@@ -147,6 +157,10 @@ export const runAgent = async (args: {
     policy,
     toolIndex: renderToolIndex(registry)
   });
+
+  if (runError) {
+    throw runError;
+  }
 
   if (state.status === "done") {
     args.onEvent?.({ type: "done", auditPath });

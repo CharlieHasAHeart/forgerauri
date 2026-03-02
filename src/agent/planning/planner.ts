@@ -118,6 +118,35 @@ const summarizeIssues = (error: z.ZodError): string =>
     .map((issue) => `${issue.path.join(".") || "<root>"}: ${issue.message}`)
     .join("; ");
 
+const parseMaybeJson = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (
+    !(trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("\"") || trimmed === "true" || trimmed === "false")
+  ) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return value;
+  }
+};
+
+const normalizePlanCandidate = (candidate: unknown): unknown => {
+  const parsedCandidate = parseMaybeJson(candidate);
+  if (!parsedCandidate || typeof parsedCandidate !== "object" || Array.isArray(parsedCandidate)) {
+    return parsedCandidate;
+  }
+
+  const out: Record<string, unknown> = { ...(parsedCandidate as Record<string, unknown>) };
+  out.acceptance_locked = parseMaybeJson(out.acceptance_locked);
+  out.tech_stack_locked = parseMaybeJson(out.tech_stack_locked);
+  out.milestones = parseMaybeJson(out.milestones);
+  out.tasks = parseMaybeJson(out.tasks);
+  return out;
+};
+
 const planPromptContent = (args: {
   goal: string;
   policy: AgentPolicy;
@@ -232,7 +261,7 @@ const proposePlanViaToolCall = async (args: {
       continue;
     }
 
-    const candidate = planCall.input;
+    const candidate = normalizePlanCandidate(planCall.input);
     if (!candidate || typeof candidate !== "object") {
       if (attempt === 3) {
         throw new Error(
@@ -275,6 +304,7 @@ const proposePlanViaToolCall = async (args: {
           content:
             "Your emit_plan_v1 arguments did not match PlanV1 schema. " +
             "Fix ONLY the JSON. Do not quote booleans, arrays, or objects. " +
+            "Top-level fields acceptance_locked/tech_stack_locked must be booleans; milestones/tasks must be arrays, not strings. " +
             `Errors: ${summarizeIssues(error)}`
         }
       ];
