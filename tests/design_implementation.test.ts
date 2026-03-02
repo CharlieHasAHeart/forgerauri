@@ -47,4 +47,23 @@ describe("tool_design_implementation", () => {
     const data = result.data as { impl: { rust: { services: Array<{ name: string }> } } };
     expect(data.impl.rust.services[0]?.name).toBe("lint_service");
   });
+
+  test("falls back to deterministic implementation when LLM output is invalid", async () => {
+    const provider = new MockProvider(["not json"]);
+
+    const result = await toolPackage.runtime.run(
+      { goal: "Design impl", contract },
+      {
+        provider,
+        runCmdImpl: async () => ({ ok: true, code: 0, stdout: "", stderr: "" }),
+        flags: { apply: true, verify: true, repair: true, maxPatchesPerTurn: 8 },
+        memory: { patchPaths: [], touchedPaths: [] }
+      }
+    );
+
+    expect(result.ok).toBe(true);
+    const data = result.data as { impl: { version: string; rust: { services: Array<{ name: string }> } } };
+    expect(data.impl.version).toBe("v1");
+    expect(data.impl.rust.services.length).toBeGreaterThan(0);
+  });
 });

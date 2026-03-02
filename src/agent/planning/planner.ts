@@ -188,25 +188,23 @@ const planPromptContent = (args: {
 
 const normalizePlanForExecution = (plan: PlanV1): PlanV1 => {
   const tasks = plan.tasks.map((task) => {
-    const hasDesignContractHint = task.tool_hints.includes("tool_design_contract");
-    if (!hasDesignContractHint) {
-      return task;
-    }
-
-    const hasDesignContractToolResult = task.success_criteria.some(
-      (criterion) => criterion.type === "tool_result" && criterion.tool_name === "tool_design_contract"
-    );
-    if (hasDesignContractToolResult) {
+    const designHints = task.tool_hints.filter((hint) => hint.startsWith("tool_design_"));
+    if (designHints.length === 0) {
       return task;
     }
 
     const filteredCriteria = task.success_criteria.filter(
       (criterion) => criterion.type !== "file_exists" && criterion.type !== "file_contains"
     );
-    const compatibleCriteria: SuccessCriteria[] = [
-      { type: "tool_result", tool_name: "tool_design_contract", expected_ok: true },
-      ...filteredCriteria
-    ];
+    const existingToolResultNames = new Set(
+      filteredCriteria
+        .filter((criterion): criterion is Extract<SuccessCriteria, { type: "tool_result" }> => criterion.type === "tool_result")
+        .map((criterion) => criterion.tool_name)
+    );
+    const requiredDesignResults: SuccessCriteria[] = designHints
+      .filter((toolName) => !existingToolResultNames.has(toolName))
+      .map((toolName) => ({ type: "tool_result" as const, tool_name: toolName, expected_ok: true }));
+    const compatibleCriteria: SuccessCriteria[] = [...requiredDesignResults, ...filteredCriteria];
 
     return {
       ...task,

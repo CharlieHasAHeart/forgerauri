@@ -17,6 +17,55 @@ const outputSchema = z.object({
   attempts: z.number().int().positive()
 });
 
+const toSnakeCase = (value: string, fallback: string): string => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+  if (normalized.length === 0 || !/^[a-z]/.test(normalized)) return fallback;
+  return normalized;
+};
+
+const buildSeedImplementation = (
+  contract: z.infer<typeof contractForImplementationV1Schema>
+): ImplementationDesignV1 => {
+  const fallbackTable = contract.dataModel.tables[0]?.name ?? "app_data";
+  const tableSet = new Set(contract.dataModel.tables.map((table) => table.name));
+  const tableForService = tableSet.size > 0 ? fallbackTable : "app_data";
+
+  const services = contract.commands.map((command, index) => ({
+    name: toSnakeCase(`${command.name}_service`, `service_${index + 1}`),
+    responsibilities: [command.purpose || `Handle ${command.name}`],
+    usesTables: [tableForService]
+  }));
+
+  const repos = Array.from(tableSet.size > 0 ? tableSet : new Set(["app_data"])).map((table, index) => ({
+    name: toSnakeCase(`${table}_repo`, `repo_${index + 1}`),
+    table,
+    operations: ["get", "list", "upsert"]
+  }));
+
+  return {
+    version: "v1",
+    rust: {
+      layering: "commands_service_repo",
+      services,
+      repos,
+      errorModel: {
+        pattern: "thiserror+ApiResponse",
+        errorCodes: ["INTERNAL_ERROR"]
+      }
+    },
+    frontend: {
+      apiPattern: "invoke_wrapper+typed_meta",
+      stateManagement: "local",
+      validation: "simple"
+    }
+  };
+};
+
 export const runDesignImplementation = async (args: {
   goal: string;
   contract: z.infer<typeof contractForImplementationV1Schema>;
@@ -42,16 +91,24 @@ export const runDesignImplementation = async (args: {
     }
   ];
 
-  const { data, raw, attempts } = await args.provider.completeJSON(messages, implementationDesignV1Schema, {
-    temperature: 0,
-    maxOutputTokens: 4000
-  });
+  try {
+    const { data, raw, attempts } = await args.provider.completeJSON(messages, implementationDesignV1Schema, {
+      temperature: 0,
+      maxOutputTokens: 4000
+    });
 
-  return {
-    impl: data,
-    attempts,
-    raw
-  };
+    return {
+      impl: data,
+      attempts,
+      raw
+    };
+  } catch (error) {
+    return {
+      impl: buildSeedImplementation(args.contract),
+      attempts: 1,
+      raw: error instanceof Error ? error.message : "fallback to deterministic implementation seed"
+    };
+  }
 };
 
 export const toolPackage: ToolPackage<z.infer<typeof inputSchema>, z.infer<typeof outputSchema>> = {
