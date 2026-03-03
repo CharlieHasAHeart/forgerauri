@@ -25,6 +25,12 @@ const intentSchema = z.discriminatedUnion("type", [
     args: z.array(z.string()),
     cwd: z.string().min(1).optional(),
     expect_exit_code: z.number().int()
+  }),
+  z.object({
+    type: z.literal("verify_acceptance_pipeline"),
+    pipeline_id: z.string().min(1),
+    cwd: z.string().min(1).optional(),
+    strict_order: z.boolean().optional()
   })
 ]);
 
@@ -46,7 +52,12 @@ export const evaluateIntent = async (args: {
     goal: args.goal,
     intent: args.intent,
     evidence: evidenceRead.events,
-    snapshot
+    snapshot,
+    runtime: {
+      repoRoot: args.rootDir,
+      appDir: "./generated/app",
+      tauriDir: "./generated/app/src-tauri"
+    }
   });
 
   return {

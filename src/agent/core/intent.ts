@@ -22,4 +22,16 @@ export type VerifyCommandIntent = {
   expect_exit_code: number;
 };
 
-export type Intent = BootstrapIntent | EnsurePathsIntent | VerifyToolExitIntent | VerifyCommandIntent;
+export type VerifyAcceptancePipelineIntent = {
+  type: "verify_acceptance_pipeline";
+  pipeline_id: string;
+  cwd?: string;
+  strict_order?: boolean;
+};
+
+export type Intent =
+  | BootstrapIntent
+  | EnsurePathsIntent
+  | VerifyToolExitIntent
+  | VerifyCommandIntent
+  | VerifyAcceptancePipelineIntent;

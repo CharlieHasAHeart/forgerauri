@@ -28,12 +28,23 @@ export type CommandExitRequirement = {
   expect_exit_code: number;
 };
 
+export type AcceptanceStepRequirement = {
+  kind: "acceptance_step";
+  pipeline_id: string;
+  command_id: string;
+  resolved_cmd: string;
+  resolved_args: string[];
+  resolved_cwd: string;
+  expect_exit_code: number;
+};
+
 export type Requirement =
   | ToolOkRequirement
   | ToolExitCodeRequirement
   | FileExistsRequirement
   | FileHashRequirement
-  | CommandExitRequirement;
+  | CommandExitRequirement
+  | AcceptanceStepRequirement;
 
 export const requirementKey = (requirement: Requirement): string => {
   switch (requirement.kind) {
@@ -47,6 +58,10 @@ export const requirementKey = (requirement: Requirement): string => {
       return `file_hash:${requirement.path}:${requirement.sha256}`;
     case "command_exit":
       return `command_exit:${requirement.cmd}:${JSON.stringify(requirement.args)}:${requirement.cwd ?? ""}:${requirement.expect_exit_code}`;
+    case "acceptance_step":
+      return `acceptance_step:${requirement.pipeline_id}:${requirement.command_id}:${requirement.resolved_cmd}:${JSON.stringify(
+        requirement.resolved_args
+      )}:${requirement.resolved_cwd}:${requirement.expect_exit_code}`;
   }
 };
 

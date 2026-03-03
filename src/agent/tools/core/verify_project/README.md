@@ -29,5 +29,6 @@ Returns `VerifyProjectResult`:
 - If `ok=false`, use `step` + `classifiedError` to decide repair action
 
 ## Constraints / safety
-- Runs full gate sequence: install(if needed) -> build -> cargo check -> tauri --help -> tauri build
+- Runs the standard desktop acceptance pipeline `desktop_tauri_default`:
+  install(if needed) -> build -> cargo check -> tauri --help -> tauri build
 - No direct file writes

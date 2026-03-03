@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { CmdResult } from "../../runner/runCmd.js";
 import { assertCommandAllowed, assertCwdInside } from "../../runtime/policy.js";
 import type { AgentCmdRunner, ErrorKind, VerifyProjectResult, VerifyStepResult } from "../types.js";
+import { DEFAULT_ACCEPTANCE_PIPELINE_ID, getAcceptanceCommand, getAcceptancePipeline } from "../core/acceptance_catalog.js";
 
 export const verifyProjectInputSchema = z.object({
   projectRoot: z.string().min(1)
@@ -63,6 +64,18 @@ export const runVerifyProject = async (args: {
   projectRoot: string;
   runCmdImpl: AgentCmdRunner;
 }): Promise<VerifyProjectResult> => {
+  // Standard desktop acceptance pipeline source of truth: desktop_tauri_default.
+  const pipeline = getAcceptancePipeline(DEFAULT_ACCEPTANCE_PIPELINE_ID);
+  const commandInstall = getAcceptanceCommand("pnpm_install");
+  const commandBuild = getAcceptanceCommand("pnpm_build");
+  const commandCargoCheck = getAcceptanceCommand("cargo_check");
+  const commandTauriHelp = getAcceptanceCommand("pnpm_tauri_help");
+  const commandTauriBuild = getAcceptanceCommand("pnpm_tauri_build");
+
+  if (!pipeline || !commandInstall || !commandBuild || !commandCargoCheck || !commandTauriHelp || !commandTauriBuild) {
+    throw new Error("acceptance catalog is missing required desktop_tauri_default commands");
+  }
+
   const safeRun = async (cmd: string, argv: string[], cwd: string): Promise<CmdResult> => {
     assertCommandAllowed(cmd);
     assertCwdInside(args.projectRoot, cwd);
@@ -93,7 +106,7 @@ export const runVerifyProject = async (args: {
   const nodeModulesPath = join(args.projectRoot, "node_modules");
 
   if (!existsSync(nodeModulesPath)) {
-    const installResult = await safeRun("pnpm", ["-C", args.projectRoot, "install"], args.projectRoot);
+    const installResult = await safeRun(commandInstall.cmd, commandInstall.args, args.projectRoot);
     const installStep = toStep("install", installResult);
     push(installStep);
     if (!installStep.ok) return fail("install", installStep.stderr, "verify failed at install");
@@ -103,19 +116,19 @@ export const runVerifyProject = async (args: {
 
   push(toStep("install_retry", okSkipped(), true));
 
-  const buildResult = await safeRun("pnpm", ["-C", args.projectRoot, "build"], args.projectRoot);
+  const buildResult = await safeRun(commandBuild.cmd, commandBuild.args, args.projectRoot);
   const buildStep = toStep("build", buildResult);
   push(buildStep);
 
   if (!buildStep.ok && isDepsBuildFailure(buildStep.stderr)) {
-    const installRetry = await safeRun("pnpm", ["-C", args.projectRoot, "install"], args.projectRoot);
+    const installRetry = await safeRun(commandInstall.cmd, commandInstall.args, args.projectRoot);
     steps[done.indexOf("install_retry")] = toStep("install_retry", installRetry);
 
     if (!installRetry.ok) {
       return fail("install_retry", installRetry.stderr, "verify failed at install retry");
     }
 
-    const buildRetry = await safeRun("pnpm", ["-C", args.projectRoot, "build"], args.projectRoot);
+    const buildRetry = await safeRun(commandBuild.cmd, commandBuild.args, args.projectRoot);
     const buildRetryStep = toStep("build_retry", buildRetry);
     push(buildRetryStep);
     if (!buildRetryStep.ok) {
@@ -128,17 +141,17 @@ export const runVerifyProject = async (args: {
 
   const tauriRoot = join(args.projectRoot, "src-tauri");
   if (existsSync(tauriRoot)) {
-    const cargoResult = await safeRun("cargo", ["check"], tauriRoot);
+    const cargoResult = await safeRun(commandCargoCheck.cmd, commandCargoCheck.args, tauriRoot);
     const cargoStep = toStep("cargo_check", cargoResult);
     push(cargoStep);
     if (!cargoStep.ok) return fail("cargo_check", cargoStep.stderr, "verify failed at cargo_check");
 
-    const tauriCheck = await safeRun("pnpm", ["-C", args.projectRoot, "tauri", "--help"], args.projectRoot);
+    const tauriCheck = await safeRun(commandTauriHelp.cmd, commandTauriHelp.args, args.projectRoot);
     const tauriCheckStep = toStep("tauri_check", tauriCheck);
     push(tauriCheckStep);
     if (!tauriCheckStep.ok) return fail("tauri_check", tauriCheckStep.stderr, "verify failed at tauri_check");
 
-    const tauriBuild = await safeRun("pnpm", ["-C", args.projectRoot, "tauri", "build"], args.projectRoot);
+    const tauriBuild = await safeRun(commandTauriBuild.cmd, commandTauriBuild.args, args.projectRoot);
     const tauriBuildStep = toStep("tauri_build", tauriBuild);
     push(tauriBuildStep);
     if (!tauriBuildStep.ok) return fail("tauri_build", tauriBuildStep.stderr, "verify failed at tauri_build");
