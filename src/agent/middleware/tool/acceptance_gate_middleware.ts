@@ -3,7 +3,7 @@ import type { Middleware } from "../compose.js";
 import type { ToolCallContext, ToolCallResult } from "./types.js";
 import { readEvidenceJsonlWithDiagnostics } from "../../core/evidence/reader.js";
 import { createSnapshot } from "../../core/workspace/snapshot.js";
-import { evaluateAcceptanceRuntime } from "../../runtime/evaluate_acceptance_runtime.js";
+import { evaluateAcceptanceRuntime } from "../../../core/agent/evaluate_acceptance_runtime.js";
 import { DEFAULT_ACCEPTANCE_PIPELINE_ID } from "../../core/acceptance/catalog.js";
 
 export const acceptanceGateMiddleware: Middleware<ToolCallContext, ToolCallResult> = async (context, next) => {
