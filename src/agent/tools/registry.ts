@@ -1,4 +1,4 @@
-import { repairOnce } from "../workflows/repair/repairLoop.js";
+import { repairOnce } from "../legacy/workflows/repair/repairLoop.js";
 import { runBootstrapProject } from "./bootstrapProject.js";
 import { runCodegenFromDesign } from "./core/codegen_from_design/index.js";
 import { runDesignContract } from "./core/design_contract/index.js";

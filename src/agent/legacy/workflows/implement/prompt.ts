@@ -1,5 +1,5 @@
-import type { LlmMessage } from "../../../llm/provider.js";
-import type { SpecIR } from "../../../spec/schema.js";
+import type { LlmMessage } from "../../../../llm/provider.js";
+import type { SpecIR } from "../../../../spec/schema.js";
 import type { ProjectSnapshot } from "./snapshot.js";
 import type { ImplementTarget } from "./types.js";
 

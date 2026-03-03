@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LlmProvider } from "../../../llm/provider.js";
+import type { LlmProvider } from "../../../../llm/provider.js";
 
 const patchSchema = z.object({
   filePath: z.string().min(1).refine((value) => !value.startsWith("/") && !value.includes(".."), "relative path only"),

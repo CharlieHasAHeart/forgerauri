@@ -33,6 +33,7 @@ src/agent/
 - `core/*` must not import `runtime/*` or `tools/*`.
 - `runtime/*` can import `core/*`.
 - `tools/*` can import `core/*`; avoid importing `runtime/*` except shared context types.
+- `runtime/*` must not import `legacy/*`.
 - `verify_project` execution and acceptance must both use `core/acceptance/catalog.ts`.
 
 ## Single Source of Truth
@@ -64,6 +65,7 @@ Moved modules:
 - `src/agent/core/workspace_snapshot.ts` -> `src/agent/core/workspace/snapshot.ts`
 - `src/agent/tools/verifyProject.ts` -> `src/agent/tools/impl/verify_project.ts`
 - `src/agent/policy/*` -> `src/agent/runtime/policy/*`
+- `src/agent/workflows/*` -> `src/agent/legacy/workflows/*` (isolated from runtime main chain)
 
 ## Debug Flow
 
@@ -74,3 +76,5 @@ Moved modules:
 3. If runtime fails with `VERIFY_ACCEPTANCE_FAILED`:
    - inspect acceptance diagnostics in state/audit
    - compare missing `acceptance_step` requirements against evidence.
+  legacy/
+    workflows/         # isolated old repair/implement workflows (non-main path)

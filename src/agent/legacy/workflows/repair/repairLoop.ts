@@ -1,13 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { applyPlan } from "../../../generator/apply.js";
-import { toPlanActionsFromPatches } from "../../../generator/patchToPlanActions.js";
-import type { Plan } from "../../../generator/types.js";
-import type { LlmProvider } from "../../../llm/provider.js";
-import { runCmd, type CmdResult } from "../../../runner/runCmd.js";
-import { CommandRepairAuditCollector } from "../../../runtime/audit/index.js";
-import { assertCommandAllowed, assertCwdInside, assertPatchBudget, assertPathInside } from "../../../runtime/policy.js";
-import type { RuntimeResult } from "../../../runtime/types.js";
+import { applyPlan } from "../../../../generator/apply.js";
+import { toPlanActionsFromPatches } from "../../../../generator/patchToPlanActions.js";
+import type { Plan } from "../../../../generator/types.js";
+import type { LlmProvider } from "../../../../llm/provider.js";
+import { runCmd, type CmdResult } from "../../../../runner/runCmd.js";
+import { CommandRepairAuditCollector } from "../../../../runtime/audit/index.js";
+import { assertCommandAllowed, assertCwdInside, assertPatchBudget, assertPathInside } from "../../../../runtime/policy.js";
+import type { RuntimeResult } from "../../../../runtime/types.js";
 import { proposeRepairsWithLLM } from "./proposeRepairsWithLLM.js";
 
 type RunImpl = (cmd: string, args: string[], cwd: string) => Promise<CmdResult>;
