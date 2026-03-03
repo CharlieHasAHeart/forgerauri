@@ -75,6 +75,7 @@ export type AgentState = {
   verifyHistory: VerifyProjectResult[];
   lastError?: {
     kind: ErrorKind;
+    code?: string;
     message: string;
     command?: { cmd: string; args: string[]; cwd: string };
   };

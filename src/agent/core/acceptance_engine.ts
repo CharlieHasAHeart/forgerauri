@@ -19,6 +19,7 @@ import {
 } from "./requirement.js";
 import type { WorkspaceSnapshot } from "./workspace_snapshot.js";
 import { getAcceptanceCommand, getAcceptancePipeline } from "./acceptance_catalog.js";
+import { canonicalizeCwd } from "./cwd_normalize.js";
 
 export type EvaluationResult = {
   status: "pending" | "satisfied" | "failed";
@@ -183,13 +184,13 @@ const resolveCwd = (
   policy: { cwd_policy: "repo_root" | "app_dir" | "tauri_dir" | { explicit: string } },
   runtime: EvalInput["runtime"]
 ): string => {
-  const repoRoot = runtime?.repoRoot ?? ".";
+  const repoRoot = runtime?.repoRoot ?? process.cwd();
   const appDir = runtime?.appDir ?? "./generated/app";
-  const tauriDir = runtime?.tauriDir ?? "./generated/app/src-tauri";
-  if (typeof policy.cwd_policy === "object") return policy.cwd_policy.explicit;
-  if (policy.cwd_policy === "repo_root") return repoRoot;
-  if (policy.cwd_policy === "app_dir") return appDir;
-  return tauriDir;
+  const tauriDir = runtime?.tauriDir ?? `${appDir}/src-tauri`;
+  if (typeof policy.cwd_policy === "object") return canonicalizeCwd(policy.cwd_policy.explicit, repoRoot);
+  if (policy.cwd_policy === "repo_root") return canonicalizeCwd(repoRoot, repoRoot);
+  if (policy.cwd_policy === "app_dir") return canonicalizeCwd(appDir, repoRoot);
+  return canonicalizeCwd(tauriDir, repoRoot);
 };
 
 const evaluateVerifyAcceptancePipelineIntent = (
@@ -210,7 +211,8 @@ const evaluateVerifyAcceptancePipelineIntent = (
   if (!input.runtime?.repoRoot || !input.runtime?.appDir || !input.runtime?.tauriDir) {
     diagnostics.push("runtime paths incomplete; used fallback repoRoot/appDir/tauriDir");
   }
-  const requiredSteps: AcceptanceStepRequirement[] = [];
+  const repoRoot = input.runtime?.repoRoot ?? process.cwd();
+  const requiredSteps: Array<{ requirement: AcceptanceStepRequirement; optional: boolean }> = [];
 
   for (const step of pipeline.steps) {
     const command = getAcceptanceCommand(step.command_id);
@@ -223,23 +225,29 @@ const evaluateVerifyAcceptancePipelineIntent = (
       };
     }
     requiredSteps.push({
-      kind: "acceptance_step",
-      pipeline_id: pipeline.id,
-      command_id: command.id,
-      resolved_cmd: command.cmd,
-      resolved_args: command.args,
-      resolved_cwd: resolveCwd(command, input.runtime),
-      expect_exit_code: command.expect_exit_code
+      optional: step.optional === true,
+      requirement: {
+        kind: "acceptance_step",
+        pipeline_id: pipeline.id,
+        command_id: command.id,
+        resolved_cmd: command.cmd,
+        resolved_args: command.args,
+        resolved_cwd: resolveCwd(command, input.runtime),
+        expect_exit_code: command.expect_exit_code
+      }
     });
   }
 
   const commandEvents = input.evidence.filter(
     (event): event is Extract<EvidenceEvent, { event_type: "command_ran" }> => event.event_type === "command_ran"
   );
-  const matchesStep = (step: AcceptanceStepRequirement, event: Extract<EvidenceEvent, { event_type: "command_ran" }>): boolean =>
+  const matchesStep = (
+    step: AcceptanceStepRequirement,
+    event: Extract<EvidenceEvent, { event_type: "command_ran" }>
+  ): boolean =>
     event.cmd === step.resolved_cmd &&
     sameArgs(event.args, step.resolved_args) &&
-    event.cwd === step.resolved_cwd &&
+    canonicalizeCwd(event.cwd, repoRoot) === canonicalizeCwd(step.resolved_cwd, repoRoot) &&
     event.exit_code === step.expect_exit_code &&
     event.ok === true;
 
@@ -248,7 +256,8 @@ const evaluateVerifyAcceptancePipelineIntent = (
 
   if (strictOrder) {
     let cursor = 0;
-    for (const step of requiredSteps) {
+    for (const item of requiredSteps) {
+      const step = item.requirement;
       let foundIndex = -1;
       for (let i = cursor; i < commandEvents.length; i += 1) {
         if (matchesStep(step, commandEvents[i]!)) {
@@ -260,13 +269,16 @@ const evaluateVerifyAcceptancePipelineIntent = (
         satisfied.push(step);
         cursor = foundIndex + 1;
       } else {
-        missing.push(step);
+        if (!item.optional) {
+          missing.push(step);
+        }
       }
     }
   } else {
-    for (const step of requiredSteps) {
+    for (const item of requiredSteps) {
+      const step = item.requirement;
       if (commandEvents.some((event) => matchesStep(step, event))) satisfied.push(step);
-      else missing.push(step);
+      else if (!item.optional) missing.push(step);
     }
   }
 

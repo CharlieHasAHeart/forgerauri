@@ -12,6 +12,8 @@ import { readEvidenceJsonlWithDiagnostics } from "../core/evidence_reader.js";
 import { createSnapshot } from "../core/workspace_snapshot.js";
 import { evaluateAcceptanceRuntime } from "./evaluate_acceptance_runtime.js";
 import { DEFAULT_ACCEPTANCE_PIPELINE_ID } from "../core/acceptance_catalog.js";
+import { getRuntimePaths } from "./get_runtime_paths.js";
+import { canonicalizeCwd } from "../core/cwd_normalize.js";
 
 export type HumanReviewFn = (args: { reason: string; patchPaths: string[]; phase: AgentStatus }) => Promise<boolean>;
 
@@ -113,6 +115,8 @@ export const executeToolCall = async (args: {
     const cwd = typeof parsedInput.cwd === "string" ? parsedInput.cwd : "";
     const exitCode = safeInt(data.code ?? data.exitCode);
     if (!cmd || !cwd || exitCode === undefined) return;
+    const runtimePaths = getRuntimePaths(ctx, state);
+    const canonicalCwd = canonicalizeCwd(cwd, runtimePaths.repoRoot);
     appendEvidence({
       event_type: "command_ran",
       run_id: runId,
@@ -121,7 +125,7 @@ export const executeToolCall = async (args: {
       call_id: callId,
       cmd,
       args,
-      cwd,
+      cwd: canonicalCwd,
       ok,
       exit_code: exitCode,
       stdout_tail: typeof data.stdout === "string" ? tail(data.stdout) : undefined,
@@ -199,11 +203,19 @@ export const executeToolCall = async (args: {
   }
 
   if (!result.ok) {
-    setStateError(
-      state,
-      "Unknown",
-      `${result.error?.message ?? "tool failed"}${result.error?.detail ? ` (${truncate(result.error.detail)})` : ""}`
-    );
+    if (result.error?.code === "VERIFY_ACCEPTANCE_FAILED") {
+      state.lastError = {
+        kind: "Config",
+        code: "VERIFY_ACCEPTANCE_FAILED",
+        message: `${result.error?.message ?? "tool failed"}${result.error?.detail ? ` (${truncate(result.error.detail)})` : ""}`
+      };
+    } else {
+      setStateError(
+        state,
+        "Unknown",
+        `${result.error?.message ?? "tool failed"}${result.error?.detail ? ` (${truncate(result.error.detail)})` : ""}`
+      );
+    }
   } else if (result.data && typeof result.data === "object") {
     const payload = result.data as Record<string, unknown>;
     if (call.name === "tool_design_contract" && payload.contract && typeof payload.contract === "object") {
@@ -219,16 +231,12 @@ export const executeToolCall = async (args: {
 
   maybeAppendCommandRan(result.data, result.ok);
 
-  if (call.name === "tool_verify_project") {
+  if (call.name === "tool_verify_project" && result.ok) {
     try {
       const evidenceFilePath = `${ctx.memory.outDir ?? state.outDir}/run_evidence.jsonl`;
       const evidenceRead = await readEvidenceJsonlWithDiagnostics(evidenceFilePath);
-      const runtimeAppDir = ctx.memory.runtimePaths?.appDir ?? ctx.memory.appDir ?? state.runtimePaths?.appDir ?? state.appDir;
-      const runtimeRepoRoot =
-        ctx.memory.runtimePaths?.repoRoot ?? ctx.memory.repoRoot ?? state.runtimePaths?.repoRoot ?? process.cwd();
-      const runtimeTauriDir =
-        ctx.memory.runtimePaths?.tauriDir ?? ctx.memory.tauriDir ?? state.runtimePaths?.tauriDir ?? `${runtimeAppDir ?? "./generated/app"}/src-tauri`;
-      const snapshot = await createSnapshot(runtimeRepoRoot, { paths: [] });
+      const rp = getRuntimePaths(ctx, state);
+      const snapshot = await createSnapshot(rp.repoRoot, { paths: [] });
       const acceptance = evaluateAcceptanceRuntime({
         goal: state.goal,
         intent: { type: "verify_acceptance_pipeline", pipeline_id: DEFAULT_ACCEPTANCE_PIPELINE_ID },
@@ -242,12 +250,22 @@ export const executeToolCall = async (args: {
         ...acceptance.diagnostics.map((item) => `acceptance: ${item}`)
       ];
       state.lastDeterministicFixes = acceptanceDiagnostics.slice(-20);
-      ctx.memory.runtimePaths = {
-        repoRoot: runtimeRepoRoot,
-        appDir: runtimeAppDir ?? "./generated/app",
-        tauriDir: runtimeTauriDir
-      };
-      state.runtimePaths = ctx.memory.runtimePaths;
+      if (acceptance.status !== "satisfied") {
+        const message = `VERIFY_ACCEPTANCE_FAILED: pipeline '${DEFAULT_ACCEPTANCE_PIPELINE_ID}' status=${acceptance.status}; ${acceptanceDiagnostics.join(
+          " | "
+        )}`;
+        state.lastError = { kind: "Config", code: "VERIFY_ACCEPTANCE_FAILED", message };
+        result = {
+          ok: false,
+          data: result.data,
+          error: {
+            code: "VERIFY_ACCEPTANCE_FAILED",
+            message,
+            detail: acceptanceDiagnostics.join("\n")
+          },
+          meta: result.meta
+        };
+      }
     } catch (error) {
       state.lastDeterministicFixes = [
         ...(state.lastDeterministicFixes ?? []),

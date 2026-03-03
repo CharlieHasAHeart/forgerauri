@@ -105,7 +105,7 @@ describe("command evidence", () => {
     expect(returned?.exit_code).toBe(0);
     expect(cmdRan?.cmd).toBe("pnpm");
     expect(cmdRan?.args).toEqual(["test"]);
-    expect(cmdRan?.cwd).toBe("./generated/app");
+    expect(String(cmdRan?.cwd ?? "").endsWith("/generated/app")).toBe(true);
     expect(cmdRan?.exit_code).toBe(0);
     const stdoutTail = String(cmdRan?.stdout_tail ?? "");
     expect(stdoutTail.length).toBeLessThanOrEqual(4000 + "...<truncated>".length);
@@ -150,4 +150,3 @@ describe("command evidence", () => {
     expect(String(cmdRan?.stderr_tail ?? "")).toContain("ERR");
   });
 });
-
