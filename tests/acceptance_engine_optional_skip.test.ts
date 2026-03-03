@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { evaluateAcceptance } from "../src/agent/core/acceptance_engine.js";
-import { createSnapshot } from "../src/agent/core/workspace_snapshot.js";
+import { evaluateAcceptance } from "../src/agent/core/acceptance/engine.js";
+import { createSnapshot } from "../src/agent/core/workspace/snapshot.js";
 
 const commandRan = (args: { idx: number; cmd: string; argv: string[]; cwd: string }) => ({
   event_type: "command_ran" as const,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import { BaseLlmProvider, type LlmCallOptions, type LlmMessage, type LlmResponse } from "../src/llm/provider.js";
 import { proposeToolCallsForTask } from "../src/agent/planning/tool_call_planner.js";
-import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
+import { defaultAgentPolicy } from "../src/agent/runtime/policy/policy.js";
 import type { ToolSpec } from "../src/agent/tools/types.js";
 
 const task = {

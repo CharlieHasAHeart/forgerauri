@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { runVerifyProject, verifyProjectInputSchema } from "../../verifyProject.js";
+import { runVerifyProject, verifyProjectInputSchema } from "../../impl/verify_project.js";
 import type { ToolPackage } from "../../types.js";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { readEvidenceJsonlWithDiagnostics } from "../../../core/evidence_reader.js";
+import { readEvidenceJsonlWithDiagnostics } from "../../../core/evidence/reader.js";
 
 const verifyStepSchema = z.object({
   name: z.enum(["install", "install_retry", "build", "build_retry", "cargo_check", "tauri_check", "tauri_build"]),

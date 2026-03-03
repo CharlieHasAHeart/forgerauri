@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { evaluateAcceptance, type EvaluationResult } from "../core/acceptance_engine.js";
-import { readEvidenceJsonlWithDiagnostics } from "../core/evidence_reader.js";
-import type { Intent } from "../core/intent.js";
-import { createSnapshot } from "../core/workspace_snapshot.js";
+import { evaluateAcceptance, type EvaluationResult } from "../core/acceptance/engine.js";
+import { readEvidenceJsonlWithDiagnostics } from "../core/evidence/reader.js";
+import type { Intent } from "../core/acceptance/intent.js";
+import { createSnapshot } from "../core/workspace/snapshot.js";
 
 const intentSchema = z.discriminatedUnion("type", [
   z.object({

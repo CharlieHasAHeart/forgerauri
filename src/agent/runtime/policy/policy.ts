@@ -1,4 +1,4 @@
-import type { SuccessCriteria } from "../plan/schema.js";
+import type { SuccessCriteria } from "../../plan/schema.js";
 
 export type AgentPolicy = {
   tech_stack: Record<string, unknown>;

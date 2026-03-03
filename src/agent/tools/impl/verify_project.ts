@@ -1,18 +1,18 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { CmdResult } from "../../runner/runCmd.js";
-import { assertCommandAllowed, assertCwdInside } from "../../runtime/policy.js";
-import type { AgentCmdRunner, ErrorKind, VerifyProjectResult, VerifyStepResult } from "../types.js";
-import type { AcceptanceStepEvent } from "../core/evidence.js";
+import type { CmdResult } from "../../../runner/runCmd.js";
+import { assertCommandAllowed, assertCwdInside } from "../../../runtime/policy.js";
+import type { AgentCmdRunner, ErrorKind, VerifyProjectResult, VerifyStepResult } from "../../types.js";
+import type { AcceptanceStepEvent } from "../../core/evidence/types.js";
 import {
   DEFAULT_ACCEPTANCE_PIPELINE_ID,
   getAcceptanceCommand,
   getAcceptancePipeline,
   type AcceptanceCommand
-} from "../core/acceptance_catalog.js";
-import type { RuntimePaths } from "../core/runtime_paths.js";
-import { resolveCwdFromPolicy } from "../core/cwd_policy.js";
+} from "../../core/acceptance/catalog.js";
+import type { RuntimePaths } from "../../core/runtime_paths/types.js";
+import { resolveCwdFromPolicy } from "../../core/acceptance/cwd_policy.js";
 
 export const verifyProjectInputSchema = z.object({
   projectRoot: z.string().min(1)

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runVerifyProject } from "../src/agent/tools/verifyProject.js";
+import { runVerifyProject } from "../src/agent/tools/impl/verify_project.js";
 
 describe("verify_project skip_if_cmd_ran_ok", () => {
   test("skips pnpm_install when successful command evidence already exists", async () => {

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runVerifyProject } from "../src/agent/tools/verifyProject.js";
+import { runVerifyProject } from "../src/agent/tools/impl/verify_project.js";
 
 describe("verify_project precheck evidence", () => {
   test("emits acceptance_step_skipped when skip_if_exists precheck triggers", async () => {

@@ -1,4 +1,4 @@
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "../runtime/policy/policy.js";
 import type { GateResult, PlanChangeRequestV2 } from "./schema.js";
 
 export type PlanChangeGateInput = {

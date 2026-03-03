@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { LlmProvider } from "../../llm/provider.js";
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "../runtime/policy/policy.js";
 import type { PlanV1 } from "../plan/schema.js";
 import { llmJson } from "./json_extract.js";
 import { renderToolIndex } from "./tool_index.js";

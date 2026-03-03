@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
-import { successCriteriaSchema } from "../plan/schema.js";
+import { successCriteriaSchema } from "../../plan/schema.js";
 import type { AgentPolicy } from "./policy.js";
 
 const policySchema = z.object({

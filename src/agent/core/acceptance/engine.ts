@@ -1,4 +1,4 @@
-import type { EvidenceEvent } from "./evidence.js";
+import type { EvidenceEvent } from "../evidence/types.js";
 import type {
   BootstrapIntent,
   EnsurePathsIntent,
@@ -7,7 +7,7 @@ import type {
   VerifyCommandIntent,
   VerifyToolExitIntent
 } from "./intent.js";
-import { normalizePath } from "./path_normalizer.js";
+import { normalizePath } from "../runtime_paths/path_normalizer.js";
 import {
   type AcceptanceStepRequirement,
   dedupeRequirements,
@@ -17,9 +17,9 @@ import {
   type Requirement,
   type ToolExitCodeRequirement
 } from "./requirement.js";
-import type { WorkspaceSnapshot } from "./workspace_snapshot.js";
-import { getAcceptanceCommand, getAcceptancePipeline } from "./acceptance_catalog.js";
-import { canonicalizeCwd } from "./cwd_normalize.js";
+import type { WorkspaceSnapshot } from "../workspace/snapshot.js";
+import { getAcceptanceCommand, getAcceptancePipeline } from "./catalog.js";
+import { canonicalizeCwd } from "../runtime_paths/cwd_normalize.js";
 import { resolveCwdFromPolicy } from "./cwd_policy.js";
 
 export type EvaluationResult = {

@@ -2,9 +2,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { evaluateAcceptance } from "../src/agent/core/acceptance_engine.js";
-import { requirementKey } from "../src/agent/core/requirement.js";
-import { createSnapshot } from "../src/agent/core/workspace_snapshot.js";
+import { evaluateAcceptance } from "../src/agent/core/acceptance/engine.js";
+import { requirementKey } from "../src/agent/core/acceptance/requirement.js";
+import { createSnapshot } from "../src/agent/core/workspace/snapshot.js";
 
 describe("acceptance engine monotonicity", () => {
   test("requirements do not shrink with unrelated evidence; shrink only when snapshot satisfies", async () => {

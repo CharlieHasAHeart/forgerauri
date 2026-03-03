@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { evaluateAcceptance } from "../src/agent/core/acceptance_engine.js";
-import { createSnapshot } from "../src/agent/core/workspace_snapshot.js";
+import { evaluateAcceptance } from "../src/agent/core/acceptance/engine.js";
+import { createSnapshot } from "../src/agent/core/workspace/snapshot.js";
 
 describe("acceptance engine - verify_tool_exit intent", () => {
   test("satisfied when matching tool_returned exit code exists", async () => {

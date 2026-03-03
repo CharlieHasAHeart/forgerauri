@@ -2,7 +2,7 @@ import type { LlmProvider } from "../../llm/provider.js";
 import type { PlanTask, PlanV1 } from "../plan/schema.js";
 import { summarizePlan } from "../plan/selectors.js";
 import { proposeToolCallsForTask } from "../planning/tool_call_planner.js";
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "./policy/policy.js";
 import type { AgentState } from "../types.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";
 import type { AgentTurnAuditCollector } from "../../runtime/audit/index.js";
@@ -14,7 +14,7 @@ import { summarizeState } from "./state.js";
 import { gateToolCalls } from "./toolcall_gate.js";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { EvidenceLogger } from "../core/evidence_logger.js";
+import { EvidenceLogger } from "../core/evidence/logger.js";
 import { getRuntimePaths } from "./get_runtime_paths.js";
 
 const parseMaybeJson = (value: unknown): unknown => {

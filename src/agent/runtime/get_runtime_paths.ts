@@ -1,6 +1,6 @@
 import { isAbsolute, join, resolve } from "node:path";
-import type { RuntimePaths } from "../core/runtime_paths.js";
-import { normalizePath } from "../core/path_normalizer.js";
+import type { RuntimePaths } from "../core/runtime_paths/types.js";
+import { normalizePath } from "../core/runtime_paths/path_normalizer.js";
 import type { ToolRunContext } from "../tools/types.js";
 import type { AgentState } from "../types.js";
 

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { runVerifyProject } from "../src/agent/tools/verifyProject.js";
+import { runVerifyProject } from "../src/agent/tools/impl/verify_project.js";
 
 describe("tool_verify_project", () => {
   test("retries install+build once when build fails with deps signal", async () => {

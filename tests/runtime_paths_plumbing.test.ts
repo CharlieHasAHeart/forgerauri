@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createSnapshot } from "../src/agent/core/workspace_snapshot.js";
+import { createSnapshot } from "../src/agent/core/workspace/snapshot.js";
 import { evaluateAcceptanceRuntime } from "../src/agent/runtime/evaluate_acceptance_runtime.js";
 import { getRuntimePaths } from "../src/agent/runtime/get_runtime_paths.js";
 import type { ToolRunContext } from "../src/agent/tools/types.js";

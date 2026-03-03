@@ -12,7 +12,7 @@ import { runMaterializeImplementation } from "./core/materialize_implementation/
 import { runMaterializeUx } from "./core/materialize_ux/index.js";
 import { runRepairKnownIssues } from "./core/repair_known_issues/index.js";
 import { runValidateDesign } from "./core/validate_design/index.js";
-import { runVerifyProject } from "./verifyProject.js";
+import { runVerifyProject } from "./impl/verify_project.js";
 import type { ToolDocPack, ToolRunContext, ToolSpec } from "./types.js";
 import { wrapToolRunWithOutputValidation } from "./util.js";
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
 import { executeToolCall } from "../src/agent/runtime/executor.js";
-import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
+import { defaultAgentPolicy } from "../src/agent/runtime/policy/policy.js";
 import type { AgentState } from "../src/agent/types.js";
 import type { ToolRunContext, ToolSpec } from "../src/agent/tools/types.js";
 import { MockProvider } from "./helpers/mockProvider.js";

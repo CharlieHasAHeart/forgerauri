@@ -7,7 +7,7 @@ import type {
   EvidenceEvent,
   ToolCalledEvent,
   ToolReturnedEvent
-} from "./evidence.js";
+} from "./types.js";
 
 export type EvidenceReadResult = {
   events: EvidenceEvent[];

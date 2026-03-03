@@ -1,6 +1,6 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { EvidenceEvent } from "./evidence.js";
+import type { EvidenceEvent } from "./types.js";
 
 export class EvidenceLogger {
   private readonly filePath: string;

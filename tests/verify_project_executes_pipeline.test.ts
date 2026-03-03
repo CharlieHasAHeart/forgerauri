@@ -2,8 +2,8 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { DEFAULT_ACCEPTANCE_PIPELINE_ID, getAcceptancePipeline } from "../src/agent/core/acceptance_catalog.js";
-import { runVerifyProject } from "../src/agent/tools/verifyProject.js";
+import { DEFAULT_ACCEPTANCE_PIPELINE_ID, getAcceptancePipeline } from "../src/agent/core/acceptance/catalog.js";
+import { runVerifyProject } from "../src/agent/tools/impl/verify_project.js";
 
 describe("verify_project executes acceptance pipeline", () => {
   test("uses desktop_tauri_default command order and cwd policies", async () => {

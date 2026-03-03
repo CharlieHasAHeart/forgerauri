@@ -2,8 +2,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { EvidenceLogger } from "../src/agent/core/evidence_logger.js";
-import type { EvidenceEvent } from "../src/agent/core/evidence.js";
+import { EvidenceLogger } from "../src/agent/core/evidence/logger.js";
+import type { EvidenceEvent } from "../src/agent/core/evidence/types.js";
 
 describe("evidence logger", () => {
   test("writes parseable jsonl lines in append order", async () => {

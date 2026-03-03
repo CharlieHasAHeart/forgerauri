@@ -1,7 +1,7 @@
-import { evaluateAcceptance, type EvaluationResult } from "../core/acceptance_engine.js";
-import type { EvidenceEvent } from "../core/evidence.js";
-import type { Intent } from "../core/intent.js";
-import type { WorkspaceSnapshot } from "../core/workspace_snapshot.js";
+import { evaluateAcceptance, type EvaluationResult } from "../core/acceptance/engine.js";
+import type { EvidenceEvent } from "../core/evidence/types.js";
+import type { Intent } from "../core/acceptance/intent.js";
+import type { WorkspaceSnapshot } from "../core/workspace/snapshot.js";
 import type { ToolRunContext } from "../tools/types.js";
 import type { AgentState } from "../types.js";
 import { getRuntimePaths } from "./get_runtime_paths.js";

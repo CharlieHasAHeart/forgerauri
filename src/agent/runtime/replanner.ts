@@ -1,7 +1,7 @@
 // Handles deterministic replan flow: propose change, gate decision, apply patch.
 import { evaluatePlanChange } from "../plan/gate.js";
 import { applyPlanChangePatch } from "../plan/patch.js";
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "./policy/policy.js";
 import { proposePlanChange } from "../planning/planner.js";
 import { PLAN_INSTRUCTIONS } from "../planning/prompts.js";
 import type { AgentState } from "../types.js";

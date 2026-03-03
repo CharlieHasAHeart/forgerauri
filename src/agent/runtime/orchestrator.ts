@@ -1,7 +1,7 @@
 // Orchestrates the plan-first loop: Plan -> Execute -> Review -> Replan.
 import { proposePlan } from "../planning/planner.js";
 import { PLAN_INSTRUCTIONS } from "../planning/prompts.js";
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "./policy/policy.js";
 import type { AgentState } from "../types.js";
 import type { LlmProvider } from "../../llm/provider.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";

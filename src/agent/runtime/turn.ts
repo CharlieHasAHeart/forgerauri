@@ -1,7 +1,7 @@
 import type { LlmProvider } from "../../llm/provider.js";
 import { getNextReadyTask } from "../plan/selectors.js";
 import type { PlanTask } from "../plan/schema.js";
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "./policy/policy.js";
 import type { AgentState } from "../types.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";
 import type { AgentTurnAuditCollector } from "../../runtime/audit/index.js";

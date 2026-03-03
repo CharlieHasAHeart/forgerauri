@@ -30,8 +30,8 @@ This document is the quick map of the current plan-first agent runtime and accep
 
 ## 3) Evidence System
 
-- Writer: `src/agent/core/evidence_logger.ts`
-- Reader: `src/agent/core/evidence_reader.ts`
+- Writer: `src/agent/core/evidence/logger.ts`
+- Reader: `src/agent/core/evidence/reader.ts`
 - File: `<outDir>/run_evidence.jsonl`
 
 Event types:
@@ -46,7 +46,7 @@ The evidence stream is append-only and used for deterministic replay/diagnosis.
 
 ## 4) Runtime Paths (single runtime truth)
 
-- Type: `src/agent/core/runtime_paths.ts`
+- Type: `src/agent/core/runtime_paths/types.ts`
 - Resolver: `src/agent/runtime/get_runtime_paths.ts`
 - Priority: `state.runtimePaths > ctx.memory.runtimePaths > fallback inference`
 
@@ -57,7 +57,7 @@ These paths feed both execution and acceptance:
 
 ## 5) Acceptance Pipeline Catalog (single source of truth)
 
-- `src/agent/core/acceptance_catalog.ts`
+- `src/agent/core/acceptance/catalog.ts`
 - Golden pipeline: `desktop_tauri_default`
 
 The catalog defines:
@@ -69,7 +69,7 @@ The catalog defines:
 
 ## 6) Deterministic Acceptance Engine
 
-- `src/agent/core/acceptance_engine.ts`
+- `src/agent/core/acceptance/engine.ts`
 - key intents:
   - `verify_acceptance_pipeline`
   - `verify_command`
@@ -86,7 +86,7 @@ For `verify_acceptance_pipeline`:
 
 ## 7) verify_project Closed Loop
 
-- Executor: `src/agent/tools/verifyProject.ts`
+- Executor: `src/agent/tools/impl/verify_project.ts`
   - executes pipeline steps from catalog
   - applies retry/precheck policy
   - emits step-level evidence callbacks

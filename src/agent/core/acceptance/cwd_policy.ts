@@ -1,6 +1,6 @@
-import type { AcceptanceCommand } from "./acceptance_catalog.js";
-import { canonicalizeCwd } from "./cwd_normalize.js";
-import type { RuntimePaths } from "./runtime_paths.js";
+import type { AcceptanceCommand } from "./catalog.js";
+import { canonicalizeCwd } from "../runtime_paths/cwd_normalize.js";
+import type { RuntimePaths } from "../runtime_paths/types.js";
 
 export const resolveCwdFromPolicy = (
   cwdPolicy: AcceptanceCommand["cwd_policy"],

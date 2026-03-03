@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { BaseLlmProvider, type LlmCallOptions, type LlmMessage, type LlmResponse } from "../src/llm/provider.js";
 import { proposePlan } from "../src/agent/planning/planner.js";
-import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
+import { defaultAgentPolicy } from "../src/agent/runtime/policy/policy.js";
 import { createToolRegistry } from "../src/agent/tools/registry.js";
 
 class DashScopePlanToolCallProvider extends BaseLlmProvider {

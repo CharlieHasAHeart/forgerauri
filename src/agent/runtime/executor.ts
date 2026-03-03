@@ -1,19 +1,19 @@
 // Executes task action plans via tools and runs criteria checks.
 import { randomUUID } from "node:crypto";
-import type { AgentPolicy } from "../policy/policy.js";
+import type { AgentPolicy } from "./policy/policy.js";
 import type { PlanTask } from "../plan/schema.js";
 import type { AgentState, AgentStatus } from "../types.js";
 import { evaluateSuccessCriteriaWithTools } from "../evaluation/reviewer.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";
 import { setStateError, truncate } from "./errors.js";
 import type { AgentEvent } from "./events.js";
-import { summarizeForEvidence, tail, type EvidenceEvent } from "../core/evidence.js";
-import { readEvidenceJsonlWithDiagnostics } from "../core/evidence_reader.js";
-import { createSnapshot } from "../core/workspace_snapshot.js";
+import { summarizeForEvidence, tail, type EvidenceEvent } from "../core/evidence/types.js";
+import { readEvidenceJsonlWithDiagnostics } from "../core/evidence/reader.js";
+import { createSnapshot } from "../core/workspace/snapshot.js";
 import { evaluateAcceptanceRuntime } from "./evaluate_acceptance_runtime.js";
-import { DEFAULT_ACCEPTANCE_PIPELINE_ID } from "../core/acceptance_catalog.js";
+import { DEFAULT_ACCEPTANCE_PIPELINE_ID } from "../core/acceptance/catalog.js";
 import { getRuntimePaths } from "./get_runtime_paths.js";
-import { canonicalizeCwd } from "../core/cwd_normalize.js";
+import { canonicalizeCwd } from "../core/runtime_paths/cwd_normalize.js";
 
 export type HumanReviewFn = (args: { reason: string; patchPaths: string[]; phase: AgentStatus }) => Promise<boolean>;
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { normalizePath } from "./path_normalizer.js";
+import { normalizePath } from "../runtime_paths/path_normalizer.js";
 
 export type SnapshotFileInfo = {
   exists: boolean;
@@ -55,4 +55,3 @@ export const createSnapshot = async (
     fileInfo
   };
 };
-

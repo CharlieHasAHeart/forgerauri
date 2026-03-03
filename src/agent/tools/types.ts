@@ -3,8 +3,8 @@ import type { Plan } from "../../generator/types.js";
 import type { LlmProvider } from "../../llm/provider.js";
 import type { CmdResult } from "../../runner/runCmd.js";
 import type { SpecIR } from "../../spec/schema.js";
-import type { EvidenceLogger } from "../core/evidence_logger.js";
-import type { RuntimePaths } from "../core/runtime_paths.js";
+import type { EvidenceLogger } from "../core/evidence/logger.js";
+import type { RuntimePaths } from "../core/runtime_paths/types.js";
 
 export type ToolResult = {
   ok: boolean;

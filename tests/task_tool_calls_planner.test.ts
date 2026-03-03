@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { proposeToolCallsForTask } from "../src/agent/planning/tool_call_planner.js";
-import { defaultAgentPolicy } from "../src/agent/policy/policy.js";
+import { defaultAgentPolicy } from "../src/agent/runtime/policy/policy.js";
 import { createToolRegistry } from "../src/agent/tools/registry.js";
 import { MockProvider } from "./helpers/mockProvider.js";
 
