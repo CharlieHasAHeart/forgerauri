@@ -39,6 +39,23 @@ export type ToolRegistryLoadResult = {
   docs: ToolDocPack[];
 };
 
+const FORGEAURI_TOOL_KEYS = new Set([
+  "tool_bootstrap_project",
+  "tool_design_contract",
+  "tool_design_ux",
+  "tool_design_implementation",
+  "tool_design_delivery",
+  "tool_materialize_contract",
+  "tool_materialize_ux",
+  "tool_materialize_implementation",
+  "tool_materialize_delivery",
+  "tool_validate_design",
+  "tool_codegen_from_design",
+  "tool_verify_project"
+]);
+
+const FOUNDATION_TOOL_KEYS = new Set(["tool_read_files", "tool_run_cmd", "tool_repair_once", "tool_repair_known_issues"]);
+
 const withRunOverride = (
   tool: ToolSpec<any>,
   run: (input: any, ctx: ToolRunContext) => ReturnType<ToolSpec<any>["run"]>
@@ -46,6 +63,30 @@ const withRunOverride = (
   ...tool,
   run: wrapToolRunWithOutputValidation(tool, async (input, ctx) => run(input, ctx))
 });
+
+const pickRegistrySubset = (
+  source: Record<string, ToolSpec<any>>,
+  include: (toolName: string) => boolean
+): Record<string, ToolSpec<any>> => {
+  const subset: Record<string, ToolSpec<any>> = {};
+  for (const [toolName, spec] of Object.entries(source)) {
+    if (include(toolName)) {
+      subset[toolName] = spec;
+    }
+  }
+  return subset;
+};
+
+export const buildFoundationRegistry = (
+  loaded: Record<string, ToolSpec<any>>,
+  _deps?: ToolRegistryDeps
+): Record<string, ToolSpec<any>> =>
+  pickRegistrySubset(loaded, (toolName) => FOUNDATION_TOOL_KEYS.has(toolName) || !FORGEAURI_TOOL_KEYS.has(toolName));
+
+export const buildForgeAuriRegistry = (
+  loaded: Record<string, ToolSpec<any>>,
+  _deps?: ToolRegistryDeps
+): Record<string, ToolSpec<any>> => pickRegistrySubset(loaded, (toolName) => FORGEAURI_TOOL_KEYS.has(toolName));
 
 export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Record<string, ToolSpec<any>>> => {
   const loaded = await loadToolPackages(deps?.toolsBaseDir);
@@ -387,7 +428,10 @@ export const createToolRegistry = async (deps?: ToolRegistryDeps): Promise<Recor
     });
   }
 
-  return loaded;
+  return {
+    ...buildFoundationRegistry(loaded, deps),
+    ...buildForgeAuriRegistry(loaded, deps)
+  };
 };
 
 export const loadToolRegistryWithDocs = async (deps?: ToolRegistryDeps): Promise<ToolRegistryLoadResult> => {
