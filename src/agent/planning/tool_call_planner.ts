@@ -86,7 +86,8 @@ export const proposeToolCallsForTask = async (args: {
         maxOutputTokens: 3200,
         enableThinking: false,
         instructions:
-          "You are task execution planner. Produce tool calls for the current step only. " +
+          "You are task execution planner. Produce the tool calls needed to complete the current task efficiently, " +
+          "and prefer returning multiple tool calls in one response when that improves task completion. " +
           "Do not modify global plan.",
         previousResponseId: previousResponseIdSent,
         truncation: args.truncation,
@@ -115,7 +116,8 @@ export const proposeToolCallsForTask = async (args: {
     schema: fallbackSchema,
     instructions:
       "You are task execution planner. Return STRICT JSON only with shape {\"toolCalls\":[...]} " +
-      "for the current task step. Use only known tool names.",
+      "for the current task. Prefer including all necessary tool calls in one response when possible. " +
+      "Use only known tool names.",
     previousResponseId: args.previousResponseId,
     truncation: args.truncation,
     contextManagement: args.contextManagement,
