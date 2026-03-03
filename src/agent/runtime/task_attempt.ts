@@ -12,6 +12,9 @@ import type { AgentEvent } from "./events.js";
 import { recordTaskActionPlan } from "./recorder.js";
 import { summarizeState } from "./state.js";
 import { gateToolCalls } from "./toolcall_gate.js";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { EvidenceLogger } from "../core/evidence_logger.js";
 
 const parseMaybeJson = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
@@ -263,17 +266,35 @@ export const runTaskAttempt = async (args: {
   const actionPlanActions = toolCalls.map((item) => ({ name: item.name }));
   args.state.status = "executing";
 
-  const executed = await executeActionPlan({
-    toolCalls,
-    actionPlanActions,
-    registry: args.registry,
-    ctx: args.ctx,
-    state: args.state,
-    policy: args.policy,
-    humanReview: args.humanReview,
-    task: args.task,
-    onEvent: args.onEvent
-  });
+  const runId = args.ctx.memory.evidenceRunId ?? randomUUID();
+  args.ctx.memory.evidenceRunId = runId;
+  args.ctx.memory.evidenceTurn = args.turn;
+  args.ctx.memory.evidenceTaskId = args.task.id;
+  const evidenceFilePath = join(args.ctx.memory.outDir ?? args.state.outDir, "run_evidence.jsonl");
+  const evidenceLogger = new EvidenceLogger({ filePath: evidenceFilePath });
+  args.ctx.memory.evidenceLogger = evidenceLogger;
+
+  const executed = await (async () => {
+    try {
+      return await executeActionPlan({
+        toolCalls,
+        actionPlanActions,
+        registry: args.registry,
+        ctx: args.ctx,
+        state: args.state,
+        policy: args.policy,
+        humanReview: args.humanReview,
+        task: args.task,
+        onEvent: args.onEvent
+      });
+    } finally {
+      await evidenceLogger.flush();
+      await evidenceLogger.close();
+      delete args.ctx.memory.evidenceLogger;
+      delete args.ctx.memory.evidenceTurn;
+      delete args.ctx.memory.evidenceTaskId;
+    }
+  })();
 
   // Sync appDir after bootstrap (tool writes ctx.memory.appDir on success)
   if (args.ctx.memory.appDir && (!args.state.appDir || args.state.appDir !== args.ctx.memory.appDir)) {

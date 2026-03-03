@@ -1,4 +1,5 @@
 // Executes task action plans via tools and runs criteria checks.
+import { randomUUID } from "node:crypto";
 import type { AgentPolicy } from "../policy/policy.js";
 import type { PlanTask } from "../plan/schema.js";
 import type { AgentState, AgentStatus } from "../types.js";
@@ -6,6 +7,7 @@ import { evaluateSuccessCriteriaWithTools } from "../evaluation/reviewer.js";
 import type { ToolRunContext, ToolSpec } from "../tools/types.js";
 import { setStateError, truncate } from "./errors.js";
 import type { AgentEvent } from "./events.js";
+import { summarizeForEvidence, type EvidenceEvent } from "../core/evidence.js";
 
 export type HumanReviewFn = (args: { reason: string; patchPaths: string[]; phase: AgentStatus }) => Promise<boolean>;
 
@@ -23,6 +25,9 @@ const normalizeToolResults = (toolName: string, ok: boolean, note?: string): { n
   note
 });
 
+const safeInt = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
+
 export const executeToolCall = async (args: {
   call: { name: string; input: unknown };
   registry: Record<string, ToolSpec<any>>;
@@ -33,28 +38,108 @@ export const executeToolCall = async (args: {
   onEvent?: (event: AgentEvent) => void;
 }): Promise<ExecutedToolCall> => {
   const { call, registry, ctx, state, policy, humanReview } = args;
+  const callId = randomUUID();
+  const startedAt = new Date().toISOString();
+  const runId = ctx.memory.evidenceRunId;
+  const turn = ctx.memory.evidenceTurn;
+  const taskId = ctx.memory.evidenceTaskId;
+  const evidenceLogger = ctx.memory.evidenceLogger;
+  const canLogEvidence = Boolean(evidenceLogger && runId && turn !== undefined && taskId);
+
+  const appendEvidence = (event: EvidenceEvent): void => {
+    if (!canLogEvidence || !evidenceLogger) return;
+    evidenceLogger.append(event);
+  };
+
+  const buildToolReturnedEvent = (args2: {
+    ok: boolean;
+    note?: string;
+    touchedPaths?: string[];
+    resultData?: unknown;
+    exitCode?: number;
+  }): EvidenceEvent | null => {
+    if (!canLogEvidence || !runId || turn === undefined || !taskId) return null;
+    return {
+      event_type: "tool_returned",
+      run_id: runId,
+      turn,
+      task_id: taskId,
+      call_id: callId,
+      tool_name: call.name,
+      ok: args2.ok,
+      ended_at: new Date().toISOString(),
+      note: args2.note ? summarizeForEvidence(args2.note) : undefined,
+      touched_paths: args2.touchedPaths ?? [],
+      output_summary: args2.resultData === undefined ? undefined : summarizeForEvidence(args2.resultData),
+      exit_code: args2.exitCode
+    };
+  };
+
+  const finish = (args2: {
+    ok: boolean;
+    note?: string;
+    touchedPaths: string[];
+    resultData?: unknown;
+    exitCode?: number;
+  }): ExecutedToolCall => {
+    const toolReturned = buildToolReturnedEvent({
+      ok: args2.ok,
+      note: args2.note,
+      touchedPaths: args2.touchedPaths,
+      resultData: args2.resultData,
+      exitCode: args2.exitCode
+    });
+    if (toolReturned) appendEvidence(toolReturned);
+    return {
+      ok: args2.ok,
+      note: args2.note,
+      touchedPaths: args2.touchedPaths,
+      resultData: args2.resultData,
+      toolName: call.name
+    };
+  };
+
+  if (canLogEvidence && runId && turn !== undefined && taskId) {
+    appendEvidence({
+      event_type: "tool_called",
+      run_id: runId,
+      turn,
+      task_id: taskId,
+      call_id: callId,
+      tool_name: call.name,
+      input: summarizeForEvidence(call.input),
+      started_at: startedAt
+    });
+  }
 
   if (!policy.safety.allowed_tools.includes(call.name)) {
     const note = `tool ${call.name} is blocked by policy`;
     setStateError(state, "Config", note);
-    return { ok: false, note, touchedPaths: [], toolName: call.name };
+    return finish({ ok: false, note, touchedPaths: [] });
   }
 
   const tool = registry[call.name] as ToolSpec | undefined;
   if (!tool) {
     const note = `unknown tool ${call.name}`;
     setStateError(state, "Unknown", note);
-    return { ok: false, note, touchedPaths: [], toolName: call.name };
+    return finish({ ok: false, note, touchedPaths: [] });
   }
 
   const parsed = tool.inputSchema.safeParse(call.input);
   if (!parsed.success) {
     const detail = parsed.error.issues.map((i) => `${i.path.join(".") || "<root>"}: ${i.message}`).join("; ");
     setStateError(state, "Config", detail);
-    return { ok: false, note: detail, touchedPaths: [], toolName: call.name };
+    return finish({ ok: false, note: detail, touchedPaths: [] });
   }
 
-  const result = await tool.run(parsed.data, ctx);
+  let result: Awaited<ReturnType<typeof tool.run>>;
+  try {
+    result = await tool.run(parsed.data, ctx);
+  } catch (error) {
+    const note = `tool ${call.name} threw: ${error instanceof Error ? error.message : String(error)}`;
+    setStateError(state, "Unknown", note);
+    return finish({ ok: false, note, touchedPaths: [] });
+  }
   const touched = result.meta?.touchedPaths ?? [];
 
   const beforePatches = new Set(state.patchPaths);
@@ -72,7 +157,13 @@ export const executeToolCall = async (args: {
     state.humanReviews.push({ reason: "Generated PATCH files require manual merge", approved, patchPaths: newPatchPaths });
     if (!approved) {
       setStateError(state, "Config", "Human review rejected automatic continuation after PATCH generation");
-      return { ok: false, note: state.lastError?.message, touchedPaths: touched, resultData: result.data, toolName: call.name };
+      return finish({
+        ok: false,
+        note: state.lastError?.message,
+        touchedPaths: touched,
+        resultData: result.data,
+        exitCode: safeInt((result.data as Record<string, unknown> | undefined)?.exitCode)
+      });
     }
   }
 
@@ -95,13 +186,13 @@ export const executeToolCall = async (args: {
     }
   }
 
-  return {
+  return finish({
     ok: result.ok,
     note: result.ok ? "ok" : state.lastError?.message,
     touchedPaths: touched,
     resultData: result.data,
-    toolName: call.name
-  };
+    exitCode: safeInt((result.data as Record<string, unknown> | undefined)?.exitCode)
+  });
 };
 
 export const executeActionPlan = async (args: {
