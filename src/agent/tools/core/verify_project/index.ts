@@ -2,6 +2,8 @@ import { z } from "zod";
 import { runVerifyProject, verifyProjectInputSchema } from "../../verifyProject.js";
 import type { ToolPackage } from "../../types.js";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { readEvidenceJsonlWithDiagnostics } from "../../../core/evidence_reader.js";
 
 const verifyStepSchema = z.object({
   name: z.enum(["install", "install_retry", "build", "build_retry", "cargo_check", "tauri_check", "tauri_build"]),
@@ -43,15 +45,44 @@ export const toolPackage: ToolPackage<z.infer<typeof verifyProjectInputSchema>, 
           appDir: input.projectRoot,
           tauriDir: `${input.projectRoot.replace(/\\/g, "/")}/src-tauri`
         };
+        const runId = ctx.memory.evidenceRunId;
+        const turn = ctx.memory.evidenceTurn;
+        const taskId = ctx.memory.evidenceTaskId;
+        const logger = ctx.memory.evidenceLogger;
+        const evidencePath = join(ctx.memory.outDir ?? input.projectRoot, "run_evidence.jsonl");
+        const evidenceRead = await readEvidenceJsonlWithDiagnostics(evidencePath);
+        const knownSuccessfulCommandIds = evidenceRead.events.flatMap((event) => {
+          if (
+            event.event_type === "command_ran" &&
+            typeof event.command_id === "string" &&
+            event.ok === true &&
+            event.exit_code === 0
+          ) {
+            return [event.command_id];
+          }
+          return [];
+        });
+
         const result = await runVerifyProject({
           projectRoot: input.projectRoot,
           runCmdImpl: ctx.runCmdImpl,
           runtimePaths,
+          evidence: {
+            knownSuccessfulCommandIds,
+            context:
+              runId && turn !== undefined && taskId
+                ? {
+                    runId,
+                    turn,
+                    taskId
+                  }
+                : undefined,
+            onStepEvent: (event) => {
+              if (!logger || !runId || turn === undefined || !taskId) return;
+              logger.append(event);
+            }
+          },
           onCommandRun: (event) => {
-            const logger = ctx.memory.evidenceLogger;
-            const runId = ctx.memory.evidenceRunId;
-            const turn = ctx.memory.evidenceTurn;
-            const taskId = ctx.memory.evidenceTaskId;
             if (!logger || !runId || turn === undefined || !taskId) return;
             logger.append({
               event_type: "command_ran",
@@ -72,12 +103,21 @@ export const toolPackage: ToolPackage<z.infer<typeof verifyProjectInputSchema>, 
           }
         });
         ctx.memory.runtimePaths = runtimePaths;
-        ctx.memory.verifyResult = {
-          ok: result.ok,
-          code: result.ok ? 0 : 1,
-          stdout: result.results.map((r) => `[${r.name}] ${r.stdout}`).join("\n"),
-          stderr: result.results.map((r) => `[${r.name}] ${r.stderr}`).join("\n")
-        };
+        if (evidenceRead.diagnostics.length > 0) {
+          ctx.memory.verifyResult = {
+            ok: result.ok,
+            code: result.ok ? 0 : 1,
+            stdout: result.results.map((r) => `[${r.name}] ${r.stdout}`).join("\n"),
+            stderr: `${result.results.map((r) => `[${r.name}] ${r.stderr}`).join("\n")}\n${evidenceRead.diagnostics.join("\n")}`
+          };
+        } else {
+          ctx.memory.verifyResult = {
+            ok: result.ok,
+            code: result.ok ? 0 : 1,
+            stdout: result.results.map((r) => `[${r.name}] ${r.stdout}`).join("\n"),
+            stderr: result.results.map((r) => `[${r.name}] ${r.stderr}`).join("\n")
+          };
+        }
         return {
           ok: result.ok,
           data: result,

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { CmdResult } from "../../runner/runCmd.js";
 import { assertCommandAllowed, assertCwdInside } from "../../runtime/policy.js";
 import type { AgentCmdRunner, ErrorKind, VerifyProjectResult, VerifyStepResult } from "../types.js";
+import type { AcceptanceStepEvent } from "../core/evidence.js";
 import {
   DEFAULT_ACCEPTANCE_PIPELINE_ID,
   getAcceptanceCommand,
@@ -85,6 +86,7 @@ const shouldRetry = (retryOn: "nonzero_exit" | "deps_signal" | "always" | undefi
 export const runVerifyProject = async (args: {
   projectRoot: string;
   runCmdImpl: AgentCmdRunner;
+  pipelineId?: string;
   runtimePaths?: RuntimePaths;
   onCommandRun?: (event: {
     commandId: string;
@@ -96,11 +98,21 @@ export const runVerifyProject = async (args: {
     stdout: string;
     stderr: string;
   }) => void;
+  evidence?: {
+    onStepEvent?: (event: AcceptanceStepEvent) => void;
+    knownSuccessfulCommandIds?: string[] | Set<string>;
+    context?: {
+      runId: string;
+      turn: number;
+      taskId: string;
+    };
+  };
 }): Promise<VerifyProjectResult> => {
   // Standard desktop acceptance pipeline source of truth: desktop_tauri_default.
-  const pipeline = getAcceptancePipeline(DEFAULT_ACCEPTANCE_PIPELINE_ID);
+  const pipelineId = args.pipelineId ?? DEFAULT_ACCEPTANCE_PIPELINE_ID;
+  const pipeline = getAcceptancePipeline(pipelineId);
   if (!pipeline) {
-    throw new Error("acceptance catalog is missing required desktop_tauri_default pipeline");
+    throw new Error(`acceptance catalog is missing required '${pipelineId}' pipeline`);
   }
 
   const commandMap = new Map<string, AcceptanceCommand>();
@@ -147,25 +159,58 @@ export const runVerifyProject = async (args: {
 
   const prechecks = pipeline.execution?.prechecks ?? [];
   const retryRules = pipeline.execution?.retries ?? {};
+  const knownSuccessfulCommandIdsSet = new Set(args.evidence?.knownSuccessfulCommandIds ?? []);
+  const eventContext = args.evidence?.context;
+  const emitStepEvent = (event: AcceptanceStepEvent): void => {
+    args.evidence?.onStepEvent?.(event);
+  };
 
   for (const step of pipeline.steps) {
+    const stepId = `${pipeline.id}:${step.command_id}`;
     const command = commandMap.get(step.command_id)!;
     const retryRule = retryRules[step.command_id];
     const maxAttempts = Math.max(1, retryRule?.maxAttempts ?? 1);
     const cwd = resolveCwdFromPolicy(command.cwd_policy, runtimePaths);
+    emitStepEvent({
+      event_type: "acceptance_step_started",
+      run_id: eventContext?.runId ?? "unknown",
+      turn: eventContext?.turn ?? 0,
+      task_id: eventContext?.taskId ?? "unknown",
+      step_id: stepId,
+      pipeline_id: pipeline.id,
+      command_id: step.command_id,
+      at: new Date().toISOString()
+    });
 
     let skipped = false;
+    let skipReason: "precheck_skip_if_exists" | "precheck_skip_if_cmd_ran_ok" | undefined;
     for (const precheck of prechecks) {
       if (precheck.command_id !== step.command_id) continue;
       if (precheck.kind === "skip_if_exists") {
         const precheckPath = precheck.path.startsWith("/") ? precheck.path : join(runtimePaths.appDir, precheck.path);
         if (existsSync(precheckPath)) {
           skipped = true;
+          skipReason = "precheck_skip_if_exists";
         }
+      }
+      if (precheck.kind === "skip_if_cmd_ran_ok" && knownSuccessfulCommandIdsSet.has(step.command_id)) {
+        skipped = true;
+        skipReason = "precheck_skip_if_cmd_ran_ok";
       }
     }
 
     if (skipped) {
+      emitStepEvent({
+        event_type: "acceptance_step_skipped",
+        run_id: eventContext?.runId ?? "unknown",
+        turn: eventContext?.turn ?? 0,
+        task_id: eventContext?.taskId ?? "unknown",
+        step_id: stepId,
+        pipeline_id: pipeline.id,
+        command_id: step.command_id,
+        reason: skipReason ?? "precheck_skip_if_exists",
+        at: new Date().toISOString()
+      });
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         push(toStep(stepNamesForCommand(step.command_id, attempt), okSkipped(), true));
       }
@@ -185,6 +230,18 @@ export const runVerifyProject = async (args: {
         code: run.code,
         stdout: run.stdout,
         stderr: run.stderr
+      });
+      emitStepEvent({
+        event_type: "acceptance_step_finished",
+        run_id: eventContext?.runId ?? "unknown",
+        turn: eventContext?.turn ?? 0,
+        task_id: eventContext?.taskId ?? "unknown",
+        step_id: stepId,
+        pipeline_id: pipeline.id,
+        command_id: step.command_id,
+        ok: run.ok,
+        exit_code: run.code,
+        at: new Date().toISOString()
       });
 
       const verifyStep = toStep(stepNamesForCommand(step.command_id, attempt), run);

@@ -89,7 +89,10 @@ const acceptancePipelines: AcceptancePipeline[] = [
         pnpm_tauri_help: { maxAttempts: 1, retryOn: "nonzero_exit" },
         pnpm_tauri_build: { maxAttempts: 1, retryOn: "nonzero_exit" }
       },
-      prechecks: [{ kind: "skip_if_exists", path: "node_modules", command_id: "pnpm_install" }]
+      prechecks: [
+        { kind: "skip_if_exists", path: "node_modules", command_id: "pnpm_install" },
+        { kind: "skip_if_cmd_ran_ok", command_id: "pnpm_install" }
+      ]
     }
   }
 ];

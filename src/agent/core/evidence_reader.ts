@@ -1,5 +1,13 @@
 import { readFile } from "node:fs/promises";
-import type { CommandRanEvent, EvidenceEvent, ToolCalledEvent, ToolReturnedEvent } from "./evidence.js";
+import type {
+  AcceptanceStepFinishedEvent,
+  AcceptanceStepSkippedEvent,
+  AcceptanceStepStartedEvent,
+  CommandRanEvent,
+  EvidenceEvent,
+  ToolCalledEvent,
+  ToolReturnedEvent
+} from "./evidence.js";
 
 export type EvidenceReadResult = {
   events: EvidenceEvent[];
@@ -45,6 +53,42 @@ const isCommandRan = (value: unknown): value is CommandRanEvent =>
   (value.command_id === undefined || typeof value.command_id === "string") &&
   typeof value.at === "string";
 
+const isAcceptanceStepStarted = (value: unknown): value is AcceptanceStepStartedEvent =>
+  isObject(value) &&
+  value.event_type === "acceptance_step_started" &&
+  typeof value.run_id === "string" &&
+  typeof value.turn === "number" &&
+  typeof value.task_id === "string" &&
+  typeof value.step_id === "string" &&
+  typeof value.pipeline_id === "string" &&
+  typeof value.command_id === "string" &&
+  typeof value.at === "string";
+
+const isAcceptanceStepSkipped = (value: unknown): value is AcceptanceStepSkippedEvent =>
+  isObject(value) &&
+  value.event_type === "acceptance_step_skipped" &&
+  typeof value.run_id === "string" &&
+  typeof value.turn === "number" &&
+  typeof value.task_id === "string" &&
+  typeof value.step_id === "string" &&
+  typeof value.pipeline_id === "string" &&
+  typeof value.command_id === "string" &&
+  (value.reason === "precheck_skip_if_exists" || value.reason === "precheck_skip_if_cmd_ran_ok") &&
+  typeof value.at === "string";
+
+const isAcceptanceStepFinished = (value: unknown): value is AcceptanceStepFinishedEvent =>
+  isObject(value) &&
+  value.event_type === "acceptance_step_finished" &&
+  typeof value.run_id === "string" &&
+  typeof value.turn === "number" &&
+  typeof value.task_id === "string" &&
+  typeof value.step_id === "string" &&
+  typeof value.pipeline_id === "string" &&
+  typeof value.command_id === "string" &&
+  typeof value.ok === "boolean" &&
+  (value.exit_code === undefined || typeof value.exit_code === "number") &&
+  typeof value.at === "string";
+
 export const readEvidenceJsonlWithDiagnostics = async (filePath: string): Promise<EvidenceReadResult> => {
   const diagnostics: string[] = [];
   let content = "";
@@ -62,7 +106,14 @@ export const readEvidenceJsonlWithDiagnostics = async (filePath: string): Promis
     if (raw.length === 0) return;
     try {
       const parsed = JSON.parse(raw) as unknown;
-      if (isToolCalled(parsed) || isToolReturned(parsed) || isCommandRan(parsed)) {
+      if (
+        isToolCalled(parsed) ||
+        isToolReturned(parsed) ||
+        isCommandRan(parsed) ||
+        isAcceptanceStepStarted(parsed) ||
+        isAcceptanceStepSkipped(parsed) ||
+        isAcceptanceStepFinished(parsed)
+      ) {
         events.push(parsed);
         return;
       }

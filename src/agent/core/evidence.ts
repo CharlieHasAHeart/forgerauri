@@ -41,7 +41,45 @@ export type CommandRanEvent = {
   at: string;
 };
 
-export type EvidenceEvent = ToolCalledEvent | ToolReturnedEvent | CommandRanEvent;
+export type AcceptanceStepStartedEvent = {
+  event_type: "acceptance_step_started";
+  run_id: string;
+  turn: number;
+  task_id: string;
+  step_id: string;
+  pipeline_id: string;
+  command_id: string;
+  at: string;
+};
+
+export type AcceptanceStepSkippedEvent = {
+  event_type: "acceptance_step_skipped";
+  run_id: string;
+  turn: number;
+  task_id: string;
+  step_id: string;
+  pipeline_id: string;
+  command_id: string;
+  reason: "precheck_skip_if_exists" | "precheck_skip_if_cmd_ran_ok";
+  at: string;
+};
+
+export type AcceptanceStepFinishedEvent = {
+  event_type: "acceptance_step_finished";
+  run_id: string;
+  turn: number;
+  task_id: string;
+  step_id: string;
+  pipeline_id: string;
+  command_id: string;
+  ok: boolean;
+  exit_code?: number;
+  at: string;
+};
+
+export type AcceptanceStepEvent = AcceptanceStepStartedEvent | AcceptanceStepSkippedEvent | AcceptanceStepFinishedEvent;
+
+export type EvidenceEvent = ToolCalledEvent | ToolReturnedEvent | CommandRanEvent | AcceptanceStepEvent;
 
 const truncate = (value: string, max = 2000): string => (value.length > max ? `${value.slice(0, max)}...<truncated>` : value);
 
