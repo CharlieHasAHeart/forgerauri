@@ -181,10 +181,8 @@ const evaluateVerifyCommandIntent = (input: Omit<EvalInput, "intent"> & { intent
 
 const resolveCwd = (
   policy: { cwd_policy: "repo_root" | "app_dir" | "tauri_dir" | { explicit: string } },
-  runtime: EvalInput["runtime"],
-  cwdOverride?: string
+  runtime: EvalInput["runtime"]
 ): string => {
-  if (cwdOverride) return cwdOverride;
   const repoRoot = runtime?.repoRoot ?? ".";
   const appDir = runtime?.appDir ?? "./generated/app";
   const tauriDir = runtime?.tauriDir ?? "./generated/app/src-tauri";
@@ -209,6 +207,9 @@ const evaluateVerifyAcceptancePipelineIntent = (
 
   const strictOrder = input.intent.strict_order ?? pipeline.strict_order ?? false;
   const diagnostics: string[] = [];
+  if (!input.runtime?.repoRoot || !input.runtime?.appDir || !input.runtime?.tauriDir) {
+    diagnostics.push("runtime paths incomplete; used fallback repoRoot/appDir/tauriDir");
+  }
   const requiredSteps: AcceptanceStepRequirement[] = [];
 
   for (const step of pipeline.steps) {
@@ -227,7 +228,7 @@ const evaluateVerifyAcceptancePipelineIntent = (
       command_id: command.id,
       resolved_cmd: command.cmd,
       resolved_args: command.args,
-      resolved_cwd: resolveCwd(command, input.runtime, input.intent.cwd),
+      resolved_cwd: resolveCwd(command, input.runtime),
       expect_exit_code: command.expect_exit_code
     });
   }

@@ -29,7 +29,6 @@ const intentSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("verify_acceptance_pipeline"),
     pipeline_id: z.string().min(1),
-    cwd: z.string().min(1).optional(),
     strict_order: z.boolean().optional()
   })
 ]);
@@ -45,6 +44,8 @@ export const evaluateIntent = async (args: {
   rootDir: string;
   evidenceFilePath: string;
   intent: Intent;
+  appDir?: string;
+  tauriDir?: string;
 }): Promise<EvaluationResult> => {
   const evidenceRead = await readEvidenceJsonlWithDiagnostics(args.evidenceFilePath);
   const snapshot = await createSnapshot(args.rootDir, { paths: snapshotPathsFromIntent(args.intent) });
@@ -55,8 +56,8 @@ export const evaluateIntent = async (args: {
     snapshot,
     runtime: {
       repoRoot: args.rootDir,
-      appDir: "./generated/app",
-      tauriDir: "./generated/app/src-tauri"
+      appDir: args.appDir ?? "./generated/app",
+      tauriDir: args.tauriDir ?? `${args.appDir ?? "./generated/app"}/src-tauri`
     }
   });
 
@@ -71,6 +72,8 @@ export const evaluateIntentFromJsonInput = async (args: {
   rootDir: string;
   evidenceFilePath: string;
   intentJsonOrPath: string;
+  appDir?: string;
+  tauriDir?: string;
 }): Promise<EvaluationResult> => {
   const maybeJson = args.intentJsonOrPath.trim();
   const raw =
@@ -82,6 +85,8 @@ export const evaluateIntentFromJsonInput = async (args: {
     goal: args.goal,
     rootDir: args.rootDir,
     evidenceFilePath: args.evidenceFilePath,
-    intent: parsed
+    intent: parsed,
+    appDir: args.appDir,
+    tauriDir: args.tauriDir
   });
 };

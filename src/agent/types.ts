@@ -4,6 +4,7 @@ import type { DeliveryDesignV1 } from "./design/delivery/schema.js";
 import type { ImplementationDesignV1 } from "./design/implementation/schema.js";
 import type { UXDesignV1 } from "./design/ux/schema.js";
 import type { GateResult, PlanChangeRequestV2, PlanChangeReviewOutcome, PlanV1 } from "./plan/schema.js";
+import type { RuntimePaths } from "./core/runtime_paths.js";
 export type AgentStatus = "planning" | "executing" | "reviewing" | "replanning" | "done" | "failed";
 
 export type ErrorKind = "Deps" | "TS" | "Rust" | "Tauri" | "Config" | "Unknown";
@@ -49,6 +50,7 @@ export type AgentState = {
   lastResponseId?: string;
   projectRoot?: string;
   appDir?: string;
+  runtimePaths?: RuntimePaths;
   contract?: ContractDesignV1;
   contractPath?: string;
   ux?: UXDesignV1;

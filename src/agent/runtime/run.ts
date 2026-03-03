@@ -11,6 +11,7 @@ import { runPlanFirstAgent } from "./orchestrator.js";
 import type { HumanReviewFn } from "./executor.js";
 import type { PlanChangeReviewFn } from "./replanner.js";
 import type { AgentEvent } from "./events.js";
+import { getRuntimePaths } from "./get_runtime_paths.js";
 
 export const runAgent = async (args: {
   goal: string;
@@ -101,12 +102,18 @@ export const runAgent = async (args: {
       maxPatchesPerTurn: maxPatches
     },
     memory: {
+      repoRoot: process.cwd(),
       specPath: state.specPath,
       outDir: state.outDir,
       patchPaths: [],
       touchedPaths: []
     }
   };
+  const initialRuntimePaths = getRuntimePaths(ctx, state);
+  ctx.memory.runtimePaths = initialRuntimePaths;
+  ctx.memory.appDir = initialRuntimePaths.appDir;
+  ctx.memory.tauriDir = initialRuntimePaths.tauriDir;
+  state.runtimePaths = initialRuntimePaths;
 
   const audit = new AgentTurnAuditCollector(args.goal);
   await audit.start(state.outDir, {

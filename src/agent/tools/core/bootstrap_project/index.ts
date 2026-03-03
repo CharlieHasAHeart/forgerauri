@@ -49,6 +49,12 @@ export const toolPackage: ToolPackage<z.infer<typeof inputSchema>, z.infer<typeo
         ctx.memory.specPath = input.specPath;
         ctx.memory.outDir = input.outDir;
         ctx.memory.appDir = result.appDir;
+        ctx.memory.tauriDir = `${result.appDir.replace(/\\/g, "/")}/src-tauri`;
+        ctx.memory.runtimePaths = {
+          repoRoot: ctx.memory.repoRoot ?? process.cwd(),
+          appDir: result.appDir.replace(/\\/g, "/"),
+          tauriDir: `${result.appDir.replace(/\\/g, "/")}/src-tauri`
+        };
         ctx.memory.patchPaths = Array.from(new Set([...ctx.memory.patchPaths, ...result.applySummary.patchPaths]));
 
         return {

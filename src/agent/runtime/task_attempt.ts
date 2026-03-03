@@ -15,6 +15,7 @@ import { gateToolCalls } from "./toolcall_gate.js";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { EvidenceLogger } from "../core/evidence_logger.js";
+import { getRuntimePaths } from "./get_runtime_paths.js";
 
 const parseMaybeJson = (value: unknown): unknown => {
   if (typeof value !== "string") return value;
@@ -61,6 +62,14 @@ export const runTaskAttempt = async (args: {
   toolCalls: Array<{ name: string; input: unknown }>;
   turnAuditResults: Array<{ name: string; ok: boolean; error?: string; touchedPaths?: string[] }>;
 }> => {
+  const runtimePaths = getRuntimePaths(args.ctx, args.state);
+  args.ctx.memory.repoRoot = runtimePaths.repoRoot;
+  args.ctx.memory.appDir = runtimePaths.appDir;
+  args.ctx.memory.tauriDir = runtimePaths.tauriDir;
+  args.ctx.memory.runtimePaths = runtimePaths;
+  args.state.runtimePaths = runtimePaths;
+  args.state.appDir = runtimePaths.appDir;
+
   const planSummary = summarizePlan(args.currentPlan);
   const stateSummary = {
     ...(summarizeState(args.state) as Record<string, unknown>),
@@ -143,7 +152,7 @@ export const runTaskAttempt = async (args: {
     const inputObj = rawInput && typeof rawInput === "object" ? (rawInput as Record<string, unknown>) : {};
     const runtimeSpecPath = args.ctx.memory.specPath ?? args.state.specPath;
     const runtimeOutDir = args.ctx.memory.outDir ?? args.state.outDir;
-    const runtimeProjectRoot = args.state.appDir ?? args.state.projectRoot;
+    const runtimeProjectRoot = args.ctx.memory.runtimePaths?.appDir ?? args.state.appDir ?? args.state.projectRoot;
     const runtimeApply = args.state.flags.apply;
 
     switch (call.name) {
@@ -301,6 +310,9 @@ export const runTaskAttempt = async (args: {
     args.state.appDir = args.ctx.memory.appDir;
     // args.state.projectRoot = args.state.projectRoot ?? args.ctx.memory.appDir;
   }
+  const nextRuntimePaths = getRuntimePaths(args.ctx, args.state);
+  args.ctx.memory.runtimePaths = nextRuntimePaths;
+  args.state.runtimePaths = nextRuntimePaths;
 
   recordTaskActionPlan({
     audit: args.audit,

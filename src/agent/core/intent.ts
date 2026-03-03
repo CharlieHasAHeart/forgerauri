@@ -25,7 +25,6 @@ export type VerifyCommandIntent = {
 export type VerifyAcceptancePipelineIntent = {
   type: "verify_acceptance_pipeline";
   pipeline_id: string;
-  cwd?: string;
   strict_order?: boolean;
 };
 

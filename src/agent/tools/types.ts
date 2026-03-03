@@ -4,6 +4,7 @@ import type { LlmProvider } from "../../llm/provider.js";
 import type { CmdResult } from "../../runner/runCmd.js";
 import type { SpecIR } from "../../spec/schema.js";
 import type { EvidenceLogger } from "../core/evidence_logger.js";
+import type { RuntimePaths } from "../core/runtime_paths.js";
 
 export type ToolResult = {
   ok: boolean;
@@ -27,6 +28,9 @@ export type ToolRunContext = {
     ir?: SpecIR;
     plan?: Plan;
     appDir?: string;
+    repoRoot?: string;
+    tauriDir?: string;
+    runtimePaths?: RuntimePaths;
     applySummary?: unknown;
     verifyResult?: CmdResult;
     patchPaths: string[];

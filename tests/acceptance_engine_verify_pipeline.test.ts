@@ -30,14 +30,14 @@ describe("acceptance engine - verify_acceptance_pipeline", () => {
     const evidence = [
       makeCommandRan({ idx: 1, cmd: "pnpm", argv: ["install"], cwd: appDir }),
       makeCommandRan({ idx: 2, cmd: "pnpm", argv: ["build"], cwd: appDir }),
-      makeCommandRan({ idx: 3, cmd: "cargo", argv: ["check"], cwd: appDir }),
+      makeCommandRan({ idx: 3, cmd: "cargo", argv: ["check"], cwd: `${appDir}/src-tauri` }),
       makeCommandRan({ idx: 4, cmd: "pnpm", argv: ["tauri", "--help"], cwd: appDir }),
       makeCommandRan({ idx: 5, cmd: "pnpm", argv: ["tauri", "build"], cwd: appDir })
     ];
 
     const result = evaluateAcceptance({
       goal: "verify desktop app",
-      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default", cwd: appDir },
+      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default" },
       evidence,
       snapshot,
       runtime: { appDir, tauriDir: `${appDir}/src-tauri`, repoRoot: process.cwd() }
@@ -54,13 +54,13 @@ describe("acceptance engine - verify_acceptance_pipeline", () => {
     const evidence = [
       makeCommandRan({ idx: 1, cmd: "pnpm", argv: ["install"], cwd: appDir }),
       makeCommandRan({ idx: 2, cmd: "pnpm", argv: ["build"], cwd: appDir }),
-      makeCommandRan({ idx: 3, cmd: "cargo", argv: ["check"], cwd: appDir }),
+      makeCommandRan({ idx: 3, cmd: "cargo", argv: ["check"], cwd: `${appDir}/src-tauri` }),
       makeCommandRan({ idx: 4, cmd: "pnpm", argv: ["tauri", "--help"], cwd: appDir })
     ];
 
     const result = evaluateAcceptance({
       goal: "verify desktop app",
-      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default", cwd: appDir },
+      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default" },
       evidence,
       snapshot,
       runtime: { appDir, tauriDir: `${appDir}/src-tauri`, repoRoot: process.cwd() }
@@ -77,14 +77,14 @@ describe("acceptance engine - verify_acceptance_pipeline", () => {
     const shuffledEvidence = [
       makeCommandRan({ idx: 1, cmd: "pnpm", argv: ["build"], cwd: appDir }),
       makeCommandRan({ idx: 2, cmd: "pnpm", argv: ["install"], cwd: appDir }),
-      makeCommandRan({ idx: 3, cmd: "cargo", argv: ["check"], cwd: appDir }),
+      makeCommandRan({ idx: 3, cmd: "cargo", argv: ["check"], cwd: `${appDir}/src-tauri` }),
       makeCommandRan({ idx: 4, cmd: "pnpm", argv: ["tauri", "--help"], cwd: appDir }),
       makeCommandRan({ idx: 5, cmd: "pnpm", argv: ["tauri", "build"], cwd: appDir })
     ];
 
     const strictResult = evaluateAcceptance({
       goal: "verify desktop app",
-      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default", cwd: appDir, strict_order: true },
+      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default", strict_order: true },
       evidence: shuffledEvidence,
       snapshot,
       runtime: { appDir, tauriDir: `${appDir}/src-tauri`, repoRoot: process.cwd() }
@@ -93,7 +93,7 @@ describe("acceptance engine - verify_acceptance_pipeline", () => {
 
     const relaxedResult = evaluateAcceptance({
       goal: "verify desktop app",
-      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default", cwd: appDir, strict_order: false },
+      intent: { type: "verify_acceptance_pipeline", pipeline_id: "desktop_tauri_default", strict_order: false },
       evidence: shuffledEvidence,
       snapshot,
       runtime: { appDir, tauriDir: `${appDir}/src-tauri`, repoRoot: process.cwd() }
@@ -101,4 +101,3 @@ describe("acceptance engine - verify_acceptance_pipeline", () => {
     expect(relaxedResult.status).toBe("satisfied");
   });
 });
-

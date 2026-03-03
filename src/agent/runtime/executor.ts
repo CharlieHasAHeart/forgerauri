@@ -8,6 +8,10 @@ import type { ToolRunContext, ToolSpec } from "../tools/types.js";
 import { setStateError, truncate } from "./errors.js";
 import type { AgentEvent } from "./events.js";
 import { summarizeForEvidence, tail, type EvidenceEvent } from "../core/evidence.js";
+import { readEvidenceJsonlWithDiagnostics } from "../core/evidence_reader.js";
+import { createSnapshot } from "../core/workspace_snapshot.js";
+import { evaluateAcceptanceRuntime } from "./evaluate_acceptance_runtime.js";
+import { DEFAULT_ACCEPTANCE_PIPELINE_ID } from "../core/acceptance_catalog.js";
 
 export type HumanReviewFn = (args: { reason: string; patchPaths: string[]; phase: AgentStatus }) => Promise<boolean>;
 
@@ -214,6 +218,43 @@ export const executeToolCall = async (args: {
   }
 
   maybeAppendCommandRan(result.data, result.ok);
+
+  if (call.name === "tool_verify_project") {
+    try {
+      const evidenceFilePath = `${ctx.memory.outDir ?? state.outDir}/run_evidence.jsonl`;
+      const evidenceRead = await readEvidenceJsonlWithDiagnostics(evidenceFilePath);
+      const runtimeAppDir = ctx.memory.runtimePaths?.appDir ?? ctx.memory.appDir ?? state.runtimePaths?.appDir ?? state.appDir;
+      const runtimeRepoRoot =
+        ctx.memory.runtimePaths?.repoRoot ?? ctx.memory.repoRoot ?? state.runtimePaths?.repoRoot ?? process.cwd();
+      const runtimeTauriDir =
+        ctx.memory.runtimePaths?.tauriDir ?? ctx.memory.tauriDir ?? state.runtimePaths?.tauriDir ?? `${runtimeAppDir ?? "./generated/app"}/src-tauri`;
+      const snapshot = await createSnapshot(runtimeRepoRoot, { paths: [] });
+      const acceptance = evaluateAcceptanceRuntime({
+        goal: state.goal,
+        intent: { type: "verify_acceptance_pipeline", pipeline_id: DEFAULT_ACCEPTANCE_PIPELINE_ID },
+        ctx,
+        state,
+        evidence: evidenceRead.events,
+        snapshot
+      });
+      const acceptanceDiagnostics = [
+        ...evidenceRead.diagnostics.map((item) => `evidence: ${item}`),
+        ...acceptance.diagnostics.map((item) => `acceptance: ${item}`)
+      ];
+      state.lastDeterministicFixes = acceptanceDiagnostics.slice(-20);
+      ctx.memory.runtimePaths = {
+        repoRoot: runtimeRepoRoot,
+        appDir: runtimeAppDir ?? "./generated/app",
+        tauriDir: runtimeTauriDir
+      };
+      state.runtimePaths = ctx.memory.runtimePaths;
+    } catch (error) {
+      state.lastDeterministicFixes = [
+        ...(state.lastDeterministicFixes ?? []),
+        `acceptance runtime evaluation failed: ${error instanceof Error ? error.message : String(error)}`
+      ].slice(-20);
+    }
+  }
 
   return finish({
     ok: result.ok,
