@@ -1,7 +1,7 @@
-import type { AgentPolicy } from "../../runtime/policy/policy.js";
+import type { AgentPolicy } from "../../../core/agent/policy/policy.js";
 import type { AgentState } from "../../types.js";
 import type { ToolRunContext, ToolSpec, ToolResult } from "../../tools/types.js";
-import type { AgentEvent } from "../../runtime/events.js";
+import type { AgentEvent } from "../../../core/agent/events.js";
 import type { HumanReviewFn } from "../../../core/agent/contracts.js";
 
 export type ToolCallContext = {

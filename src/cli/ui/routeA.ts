@@ -4,7 +4,7 @@ import chalk from "chalk";
 import logUpdate from "log-update";
 import boxen from "boxen";
 import prompts from "prompts";
-import type { AgentEvent } from "../../agent/runtime/events.js";
+import type { AgentEvent } from "../../core/agent/events.js";
 import type { HumanReviewFn, PlanChangeReviewFn } from "../../core/agent/contracts.js";
 
 const truncate = (value: string | undefined, max = 200): string | undefined => {

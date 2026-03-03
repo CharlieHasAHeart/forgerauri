@@ -1,4 +1,4 @@
-import type { AgentEvent } from "../agent/runtime/events.js";
+import type { AgentEvent } from "../core/agent/events.js";
 import type { HumanReviewFn, PlanChangeReviewFn } from "../core/agent/contracts.js";
 
 export type HumanReviewPort = {

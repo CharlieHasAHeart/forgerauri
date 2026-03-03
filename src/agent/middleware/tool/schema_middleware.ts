@@ -1,6 +1,6 @@
 import type { Middleware } from "../compose.js";
 import type { ToolCallContext, ToolCallResult } from "./types.js";
-import { setStateError } from "../../runtime/errors.js";
+import { setStateError } from "../../../core/agent/errors.js";
 
 const fail = (toolName: string, note: string): ToolCallResult => ({
   ok: false,

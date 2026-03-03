@@ -1,4 +1,4 @@
-import type { AgentEvent } from "../agent/runtime/events.js";
+import type { AgentEvent } from "../core/agent/events.js";
 import type { ToolSpec } from "../agent/tools/types.js";
 import { getLlmAdapterFromEnv } from "../adapters/llm/index.js";
 import { NodeCommandRunner } from "../adapters/command/NodeCommandRunner.js";

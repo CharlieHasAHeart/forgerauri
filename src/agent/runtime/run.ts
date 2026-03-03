@@ -3,12 +3,12 @@ import { getProviderFromEnv } from "../../llm/index.js";
 import type { LlmProvider } from "../../llm/provider.js";
 import { runCmd, type CmdResult } from "../../runner/runCmd.js";
 import { runAgent as runCoreAgent } from "../../core/agent/runAgent.js";
-import { defaultAgentPolicy, type AgentPolicy } from "./policy/policy.js";
+import { defaultAgentPolicy, type AgentPolicy } from "../../core/agent/policy/policy.js";
 import { createToolRegistry, loadToolRegistryWithDocs } from "../tools/registry.js";
 import type { ToolSpec } from "../tools/types.js";
 import type { AgentState } from "../types.js";
 import type { HumanReviewFn, PlanChangeReviewFn } from "../../core/agent/contracts.js";
-import type { AgentEvent } from "./events.js";
+import type { AgentEvent } from "../../core/agent/events.js";
 
 export const runAgent = async (args: {
   goal: string;

@@ -1,7 +1,7 @@
 import process from "node:process";
 import { ZodError } from "zod";
 import { createRouteAUiAdapter } from "../../adapters/ui/routeA/RouteAUiAdapter.js";
-import type { AgentEvent } from "../../agent/runtime/events.js";
+import type { AgentEvent } from "../../core/agent/events.js";
 import { createAgentApp } from "../../app/createAgentApp.js";
 import { loadAppEnv } from "../../app/env.js";
 import { parseArgs, parsePolicy, printValidationErrors, usage } from "./args.js";
