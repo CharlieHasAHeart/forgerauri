@@ -1,0 +1,70 @@
+import { readFile } from "node:fs/promises";
+import { z } from "zod";
+import { evaluateAcceptance, type EvaluationResult } from "../core/acceptance_engine.js";
+import { readEvidenceJsonlWithDiagnostics } from "../core/evidence_reader.js";
+import type { Intent } from "../core/intent.js";
+import { createSnapshot } from "../core/workspace_snapshot.js";
+
+const intentSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("bootstrap"),
+    fingerprints: z.array(z.string().min(1))
+  }),
+  z.object({
+    type: z.literal("ensure_paths"),
+    expected_paths: z.array(z.string().min(1))
+  }),
+  z.object({
+    type: z.literal("verify_tool_exit"),
+    tool_name: z.string().min(1),
+    expect_exit_code: z.number().int()
+  })
+]);
+
+const snapshotPathsFromIntent = (intent: Intent): string[] => {
+  if (intent.type === "bootstrap") return intent.fingerprints;
+  if (intent.type === "ensure_paths") return intent.expected_paths;
+  return [];
+};
+
+export const evaluateIntent = async (args: {
+  goal: string;
+  rootDir: string;
+  evidenceFilePath: string;
+  intent: Intent;
+}): Promise<EvaluationResult> => {
+  const evidenceRead = await readEvidenceJsonlWithDiagnostics(args.evidenceFilePath);
+  const snapshot = await createSnapshot(args.rootDir, { paths: snapshotPathsFromIntent(args.intent) });
+  const evaluated = evaluateAcceptance({
+    goal: args.goal,
+    intent: args.intent,
+    evidence: evidenceRead.events,
+    snapshot
+  });
+
+  return {
+    ...evaluated,
+    diagnostics: [...evidenceRead.diagnostics, ...evaluated.diagnostics]
+  };
+};
+
+export const evaluateIntentFromJsonInput = async (args: {
+  goal: string;
+  rootDir: string;
+  evidenceFilePath: string;
+  intentJsonOrPath: string;
+}): Promise<EvaluationResult> => {
+  const maybeJson = args.intentJsonOrPath.trim();
+  const raw =
+    maybeJson.startsWith("{") || maybeJson.startsWith("[")
+      ? maybeJson
+      : await readFile(args.intentJsonOrPath, "utf8");
+  const parsed = intentSchema.parse(JSON.parse(raw)) as Intent;
+  return evaluateIntent({
+    goal: args.goal,
+    rootDir: args.rootDir,
+    evidenceFilePath: args.evidenceFilePath,
+    intent: parsed
+  });
+};
+
