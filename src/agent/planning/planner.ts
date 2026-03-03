@@ -7,6 +7,7 @@ import { llmJson } from "./json_extract.js";
 import { DEFAULT_PLAN_CHANGE_INSTRUCTIONS, DEFAULT_PLAN_INSTRUCTIONS } from "./prompts.js";
 import { renderToolIndex } from "./tool_index.js";
 import type { ToolSpec } from "../tools/types.js";
+import { CANONICAL_CONTRACT_PATH, LEGACY_CONTRACT_PATH } from "../../app/conventions.js";
 
 const successCriteriaCommandSchema = {
   type: "object",
@@ -170,13 +171,13 @@ const planPromptContent = (args: {
       2
     )}\n` +
     "Every task must include success_criteria with machine-checkable command/file checks. " +
-    "For contract artifact checks, use path 'forgetauri.contract.json' (not legacy 'design/contract.json')."
+    `For contract artifact checks, use path '${CANONICAL_CONTRACT_PATH}' (not legacy '${LEGACY_CONTRACT_PATH}').`
   );
 };
 
 const normalizeCriteriaPath = (path: string): string => {
   const normalized = path.trim().replace(/\\/g, "/");
-  if (normalized === "design/contract.json") return "forgetauri.contract.json";
+  if (normalized === LEGACY_CONTRACT_PATH) return CANONICAL_CONTRACT_PATH;
   return path;
 };
 
