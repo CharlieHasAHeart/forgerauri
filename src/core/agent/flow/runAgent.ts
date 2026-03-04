@@ -11,6 +11,8 @@ import type { LlmPort } from "../../contracts/llm.js";
 import type { Planner } from "../../contracts/planning.js";
 import type { KernelHooks } from "../../contracts/hooks.js";
 import { noopPlanner } from "../../defaults/noopPlanner.js";
+import { applyMiddlewares } from "../../middleware/applyMiddlewares.js";
+import type { KernelMiddleware } from "../../middleware/types.js";
 
 export type CoreRunAgentArgs = {
   goal: string;
@@ -31,6 +33,7 @@ export type CoreRunAgentArgs = {
   modelHint?: string;
   runtimeRepoRoot?: string;
   runtimePathsResolver?: RuntimePathsResolver;
+  middlewares?: KernelMiddleware[];
   hooks?: KernelHooks;
   renderToolIndex?: (registry: Record<string, ToolSpec<any>>) => string;
   onEvent?: (event: AgentEvent) => void;
@@ -112,13 +115,23 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     compactionThreshold: state.flags.compactionThreshold
   });
 
+  const installed = await applyMiddlewares({
+    middlewares: args.middlewares,
+    ctx,
+    state,
+    registry: args.registry,
+    provider: args.llm,
+    hooks: args.hooks
+  });
+  ctx.provider = installed.provider;
+
   let runError: unknown;
   try {
     await runPlanFirstAgent({
       state,
-      provider: args.llm,
+      provider: installed.provider,
       planner: args.planner ?? noopPlanner,
-      registry: args.registry,
+      registry: installed.registry,
       ctx,
       maxTurns,
       maxToolCallsPerTurn,
@@ -128,7 +141,7 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
       requestPlanChangeReview: args.humanReview?.requestPlanChangeReview,
       onEvent: args.onEvent ?? args.humanReview?.onEvent,
       runtimePathsResolver,
-      hooks: args.hooks
+      hooks: installed.hooks
     });
   } catch (error) {
     runError = error;
@@ -149,7 +162,7 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     lastError: state.lastError,
     status: state.status,
     policy: args.policy,
-    toolIndex: args.renderToolIndex ? args.renderToolIndex(args.registry) : ""
+    toolIndex: args.renderToolIndex ? args.renderToolIndex(installed.registry) : ""
   });
 
   if (runError) {
