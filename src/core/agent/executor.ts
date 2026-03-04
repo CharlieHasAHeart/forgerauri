@@ -6,9 +6,9 @@ import type { AgentState } from "../contracts/state.js";
 import type { ToolRunContext, ToolSpec } from "../contracts/tools.js";
 import { setStateError, truncate } from "./errors.js";
 import type { AgentEvent } from "./events.js";
-import type { HumanReviewFn } from "./contracts.js";
+import type { HumanReviewFn as HumanReviewFnType } from "./contracts.js";
 
-export type { HumanReviewFn } from "./contracts.js";
+export type HumanReviewFn = HumanReviewFnType;
 
 export type ExecutedToolCall = {
   ok: boolean;

@@ -1,44 +1,10 @@
 import type { AgentPolicy } from "./policy.js";
 import type { LlmPort } from "./llm.js";
 import type { ToolSpec } from "./tools.js";
+import type { PlanTask, PlanV1, SuccessCriterion } from "../planning/Plan.js";
+import type { PlanChangeRequestV2, PlanPatchOperation, ToolCall } from "../planning/actions.js";
 
-export type SuccessCriterion =
-  | { type: "tool_result"; tool_name: string; expected_ok?: boolean }
-  | { type: "file_exists"; path: string }
-  | { type: "file_contains"; path: string; contains: string }
-  | { type: "command"; cmd: string; args?: string[]; cwd?: string; expect_exit_code?: number };
-
-export type PlanTask = {
-  id: string;
-  title: string;
-  description?: string;
-  dependencies: string[];
-  success_criteria: SuccessCriterion[];
-};
-
-export type PlanV1 = {
-  version: "v1";
-  goal: string;
-  tasks: PlanTask[];
-};
-
-export type ToolCall = { name: string; input: unknown; on_fail?: "stop" | "continue" };
-
-export type PlanPatchOperation =
-  | { action: "tasks.add"; task: PlanTask; after_task_id?: string }
-  | { action: "tasks.remove"; task_id: string }
-  | { action: "tasks.update"; task_id: string; changes: Partial<PlanTask> }
-  | { action: "tasks.reorder"; task_id: string; after_task_id?: string }
-  | { action: "acceptance.update"; changes: Record<string, unknown> }
-  | { action: "techStack.update"; changes: Record<string, unknown> };
-
-export type PlanChangeRequestV2 = {
-  version: "v2";
-  reason: string;
-  change_type: string;
-  impact?: Record<string, unknown>;
-  patch: PlanPatchOperation[];
-};
+export type { PlanTask, PlanV1, SuccessCriterion, PlanChangeRequestV2, PlanPatchOperation, ToolCall };
 
 export type Planner = {
   proposePlan: (args: {

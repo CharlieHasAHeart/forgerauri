@@ -1,1 +1,3 @@
-export type { ToolResult } from "../../contracts/tools.js";
+import type { ToolResult as CoreToolResult } from "../../contracts/tools.js";
+
+export type ToolResult = CoreToolResult;

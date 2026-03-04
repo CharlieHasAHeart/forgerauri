@@ -1,1 +1,3 @@
-export type { AgentPolicy } from "./policy.js";
+import type { AgentPolicy as CoreAgentPolicy } from "../../contracts/policy.js";
+
+export type AgentPolicy = CoreAgentPolicy;
