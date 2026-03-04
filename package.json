@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
-    "test:unit": "vitest run tests/loadSpec.test.ts tests/spec_enrich.test.ts tests/llm_provider.test.ts tests/llm_json.test.ts tests/contract_views.test.ts tests/plan_schema.test.ts tests/plan_patch.test.ts tests/plan_gate.test.ts tests/tool_output_schema.test.ts",
-    "test:integration": "vitest run tests/tool_loader.test.ts tests/design_ux.test.ts tests/design_implementation.test.ts tests/design_delivery.test.ts tests/contract_design.test.ts tests/materialize_contract.test.ts tests/materialize_ux.test.ts tests/materialize_implementation.test.ts tests/materialize_delivery.test.ts tests/validate_design.test.ts tests/codegen_from_design.test.ts tests/repair_known_issues.test.ts tests/verify_project.test.ts tests/tool_call_planner.test.ts tests/task_tool_calls_planner.test.ts tests/planner_tool_call_plan.test.ts tests/replanner.test.ts tests/agent_events.test.ts tests/agent_plan_mode.test.ts tests/agent_plan_replan_integration.test.ts tests/agent_runtime.test.ts",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests tests/loadSpec.test.ts tests/spec_enrich.test.ts tests/llm_provider.test.ts tests/llm_json.test.ts tests/contract_views.test.ts tests/plan_schema.test.ts tests/plan_patch.test.ts tests/plan_gate.test.ts tests/tool_output_schema.test.ts",
+    "test:integration": "vitest run --passWithNoTests tests/tool_loader.test.ts tests/design_ux.test.ts tests/design_implementation.test.ts tests/design_delivery.test.ts tests/contract_design.test.ts tests/materialize_contract.test.ts tests/materialize_ux.test.ts tests/materialize_implementation.test.ts tests/materialize_delivery.test.ts tests/validate_design.test.ts tests/codegen_from_design.test.ts tests/repair_known_issues.test.ts tests/verify_project.test.ts tests/tool_call_planner.test.ts tests/task_tool_calls_planner.test.ts tests/planner_tool_call_plan.test.ts tests/replanner.test.ts tests/agent_events.test.ts tests/agent_plan_mode.test.ts tests/agent_plan_replan_integration.test.ts tests/agent_runtime.test.ts",
     "test:stack": "pnpm run test:unit && pnpm run test:integration && pnpm run build",
     "test:agent-smoke": "bash -lc 'test -n \"$SPEC_PATH\" && test -n \"$OUT_DIR\" || { echo \"Set SPEC_PATH and OUT_DIR, e.g. SPEC_PATH=/path/spec.json OUT_DIR=/path/out\"; exit 1; }; pnpm dev -- --agent --goal \"Generate and run app from spec\" --spec \"$SPEC_PATH\" --out \"$OUT_DIR\" --apply --verify --repair'"
   },
