@@ -20,9 +20,6 @@ export type ToolRunContext = {
   provider: LlmPort;
   runCmdImpl: CommandRunnerPort;
   flags: {
-    apply: boolean;
-    verify: boolean;
-    repair: boolean;
     maxPatchesPerTurn: number;
   };
   memory: {

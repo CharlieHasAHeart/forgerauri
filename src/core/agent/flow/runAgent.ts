@@ -16,9 +16,6 @@ export type CoreRunAgentArgs = {
   goal: string;
   specPath: string;
   outDir: string;
-  apply: boolean;
-  verify: boolean;
-  repair: boolean;
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
   maxPatches?: number;
@@ -59,9 +56,6 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     specPath: args.specPath,
     outDir: args.outDir,
     flags: {
-      apply: args.apply,
-      verify: args.verify,
-      repair: args.repair,
       truncation,
       compactionThreshold
     },
@@ -89,9 +83,6 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     provider: args.llm,
     runCmdImpl: args.commandRunner,
     flags: {
-      apply: state.flags.apply,
-      verify: state.flags.verify,
-      repair: state.flags.repair,
       maxPatchesPerTurn: maxPatches
     },
     memory: {
@@ -117,9 +108,6 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     outDir: state.outDir,
     providerName: args.llm.name,
     model: args.modelHint,
-    apply: state.flags.apply,
-    verify: state.flags.verify,
-    repair: state.flags.repair,
     truncation: state.flags.truncation,
     compactionThreshold: state.flags.compactionThreshold
   });

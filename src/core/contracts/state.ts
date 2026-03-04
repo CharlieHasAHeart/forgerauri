@@ -13,9 +13,6 @@ export type AgentState = {
   runtimePaths?: RuntimePaths;
   currentTaskId?: string;
   flags: {
-    apply: boolean;
-    verify: boolean;
-    repair: boolean;
     truncation?: "auto" | "disabled";
     compactionThreshold?: number;
   };

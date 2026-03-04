@@ -26,9 +26,6 @@ export class AgentTurnAuditCollector {
     outDir?: string;
     providerName?: string;
     model?: string;
-    apply?: boolean;
-    verify?: boolean;
-    repair?: boolean;
     truncation?: "auto" | "disabled";
     compactionThreshold?: number;
   };
@@ -61,9 +58,6 @@ export class AgentTurnAuditCollector {
       outDir?: string;
       providerName?: string;
       model?: string;
-      apply?: boolean;
-      verify?: boolean;
-      repair?: boolean;
       truncation?: "auto" | "disabled";
       compactionThreshold?: number;
     }
