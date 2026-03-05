@@ -22,7 +22,7 @@ export class AgentTurnAuditCollector {
   private writeQueue: Promise<void> = Promise.resolve();
   private startedAt = new Date().toISOString();
   private startup?: {
-    specPath?: string;
+    specRef?: string;
     outDir?: string;
     providerName?: string;
     model?: string;
@@ -54,7 +54,7 @@ export class AgentTurnAuditCollector {
   async start(
     baseRoot: string,
     startup?: {
-      specPath?: string;
+      specRef?: string;
       outDir?: string;
       providerName?: string;
       model?: string;

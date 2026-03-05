@@ -10,6 +10,7 @@ import type { HumanReviewPort } from "../contracts.js";
 import type { LlmPort } from "../../contracts/llm.js";
 import type { Planner } from "../../contracts/planning.js";
 import type { KernelHooks } from "../../contracts/hooks.js";
+import type { Workspace } from "../../contracts/workspace.js";
 import { noopPlanner } from "../../defaults/noopPlanner.js";
 import { applyMiddlewares } from "../../middleware/applyMiddlewares.js";
 import type { KernelMiddleware } from "../../middleware/types.js";
@@ -49,13 +50,10 @@ export type CoreRunAgentResult = {
 
 export type CoreRunRequest = {
   goal: string;
-  specPath: string;
   modelHint?: string;
 };
 
 export type CoreRunRuntime = {
-  outDir: string;
-  runtimeRepoRoot?: string;
   runtimePathsResolver?: RuntimePathsResolver;
   maxTurns?: number;
   maxToolCallsPerTurn?: number;
@@ -80,10 +78,11 @@ export type CoreRunDeps = {
 
 export const runCoreAgent = async (args: {
   request: CoreRunRequest;
+  workspace: Workspace;
   runtime: CoreRunRuntime;
   deps: CoreRunDeps;
 }): Promise<CoreRunAgentResult> => {
-  const { request, runtime, deps } = args;
+  const { request, workspace, runtime, deps } = args;
   const maxTurns = runtime.maxTurns ?? 16;
   const maxToolCallsPerTurn = runtime.maxToolCallsPerTurn ?? 4;
   const maxPatches = runtime.maxPatches ?? 8;
@@ -93,8 +92,8 @@ export const runCoreAgent = async (args: {
 
   const state: AgentState = {
     goal: request.goal,
-    specPath: request.specPath,
-    outDir: runtime.outDir,
+    specPath: workspace.inputs?.specRef ?? "",
+    outDir: workspace.runDir,
     flags: {
       truncation,
       compactionThreshold
@@ -126,8 +125,9 @@ export const runCoreAgent = async (args: {
       maxPatchesPerTurn: maxPatches
     },
     memory: {
-      repoRoot: runtime.runtimeRepoRoot ?? process.cwd(),
-      specPath: state.specPath,
+      workspace,
+      repoRoot: workspace.root,
+      specRef: workspace.inputs?.specRef,
       outDir: state.outDir,
       patchPaths: [],
       touchedPaths: []
@@ -143,8 +143,8 @@ export const runCoreAgent = async (args: {
   state.appDir = initialRuntimePaths.appDir;
 
   const audit = deps.audit ?? new AgentTurnAuditCollector(request.goal);
-  await audit.start(state.outDir, {
-    specPath: state.specPath,
+  await audit.start(workspace.runDir, {
+    specRef: workspace.inputs?.specRef,
     outDir: state.outDir,
     providerName: deps.llm.name,
     model: request.modelHint,
@@ -229,15 +229,21 @@ export const runCoreAgent = async (args: {
 };
 
 export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResult> => {
+  const workspace: Workspace = {
+    root: args.runtimeRepoRoot ?? process.cwd(),
+    runDir: args.outDir,
+    inputs: {
+      specRef: args.specPath
+    },
+    paths: {}
+  };
   return runCoreAgent({
     request: {
       goal: args.goal,
-      specPath: args.specPath,
       modelHint: args.modelHint
     },
+    workspace,
     runtime: {
-      outDir: args.outDir,
-      runtimeRepoRoot: args.runtimeRepoRoot,
       runtimePathsResolver: args.runtimePathsResolver,
       maxTurns: args.maxTurns,
       maxToolCallsPerTurn: args.maxToolCallsPerTurn,
