@@ -25,7 +25,6 @@ export type CoreRunAgentResult = {
 
 export type CoreRunRequest = {
   goal: string;
-  modelHint?: string;
 };
 
 export type CoreRunRuntime = {
@@ -122,7 +121,7 @@ export const runCoreAgent = async (args: {
     specRef: workspace.inputs?.specRef,
     runDir: state.runDir,
     providerName: deps.llm.name,
-    model: request.modelHint,
+    model: deps.llm.model,
     truncation: state.flags.truncation,
     compactionThreshold: state.flags.compactionThreshold
   });

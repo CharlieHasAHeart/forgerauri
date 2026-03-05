@@ -16,6 +16,7 @@ export type LlmJsonResult<T> = {
 
 export type LlmPort = {
   name: string;
+  model?: string;
   complete?: (messages: LlmMessage[], opts?: Record<string, unknown>) => Promise<{ text: string; responseId?: string; usage?: unknown }>;
   completeJSON?: <T>(
     messages: LlmMessage[],
