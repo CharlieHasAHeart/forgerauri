@@ -172,8 +172,7 @@ const requestStructured = async <T>(args: {
 const planningMessages = (context: ContextPacket): LlmMessage[] => [
   {
     role: "system",
-    content:
-      "You are a deterministic planner. Follow provided context. Prefer verify_run when evidence is missing. For code changes, use apply_structured_edits only. Never use write_file/edit_file/delete_file. Output strict JSON only."
+    content: "You are a deterministic planner. Follow provided context, prefer verification tools when evidence is missing, and output strict JSON only."
   },
   {
     role: "user",
@@ -204,12 +203,10 @@ export const createDefaultPlanner = (args: { provider: LlmPort }): Planner => ({
         ...planningMessages(input.context),
         {
           role: "user",
-          content:
-            `Task to execute:\n${JSON.stringify(input.task, null, 2)}\n` +
-            "If edits are required, emit tool call apply_structured_edits with input {edits:[...]} using kinds create_file/delete_file/replace_range/find_replace/insert_after."
+          content: `Task to execute:\n${JSON.stringify(input.task, null, 2)}\nUse tools from the provided registry and policy only.`
         }
       ],
-      schemaHint: `{"toolCalls":[{"name":"apply_structured_edits|verify_run|read_file|glob|grep|read_blob|ls","input":{},"on_fail":"stop|continue?"}]}`,
+      schemaHint: `{"toolCalls":[{"name":"string","input":{},"on_fail":"stop|continue?"}]}`,
       validate: parseToolCallsResponse
     });
     return {

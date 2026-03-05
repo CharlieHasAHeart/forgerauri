@@ -93,7 +93,13 @@ const toEvidence = (args: {
   };
 };
 
-export const createVerifyRunTool = (state: AgentState): ToolSpec<VerifyInput> => ({
+const getStateFromMemory = (ctx: ToolRunContext): AgentState | undefined => {
+  const candidate = ctx.memory.agentState;
+  if (!candidate || typeof candidate !== "object") return undefined;
+  return candidate as AgentState;
+};
+
+export const createVerifyRunTool = (): ToolSpec<VerifyInput> => ({
   name: "verify_run",
   description: "Run a verification command and return structured Evidence.",
   inputSchema: {
@@ -101,7 +107,8 @@ export const createVerifyRunTool = (state: AgentState): ToolSpec<VerifyInput> =>
   },
   async run(input, ctx): Promise<ToolResult> {
     try {
-      const cwd = input.cwd ?? ctx.memory.appDir ?? state.appDir ?? state.runDir;
+      const state = getStateFromMemory(ctx);
+      const cwd = input.cwd ?? ctx.memory.appDir ?? state?.appDir ?? ctx.memory.runDir ?? state?.runDir ?? process.cwd();
       const result = await ctx.runCmdImpl(input.command, input.args ?? [], cwd);
       const evidence = toEvidence({
         command: input.command,
@@ -109,7 +116,7 @@ export const createVerifyRunTool = (state: AgentState): ToolSpec<VerifyInput> =>
         result,
         ctx
       });
-      state.lastEvidence = evidence;
+      if (state) state.lastEvidence = evidence;
       ctx.memory.verifyEvidence = evidence;
       return {
         ok: evidence.ok,

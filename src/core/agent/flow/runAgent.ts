@@ -14,8 +14,6 @@ import { applyMiddlewares } from "../../middleware/applyMiddlewares.js";
 import type { KernelMiddleware } from "../../middleware/types.js";
 import { ContextEngine } from "../../context_engine/ContextEngine.js";
 import { MemoryStore } from "../../memory/MemoryStore.js";
-import { createVerifyRunTool } from "../../../tools/verify/runVerifiedCommand.js";
-import { createApplyStructuredEditsTool } from "../../../tools/patch/applyStructuredEdits.js";
 import { createDefaultPlanner } from "../../defaults/defaultPlanner.js";
 
 export type CoreRunAgentResult = {
@@ -108,6 +106,7 @@ export const runCoreAgent = async (args: {
       maxPatchesPerTurn: maxPatches
     },
     memory: {
+      agentState: state,
       workspace,
       repoRoot: workspace.root,
       specRef: workspace.inputs?.specRef,
@@ -133,17 +132,11 @@ export const runCoreAgent = async (args: {
     model: deps.llm.model
   });
 
-  const registryWithCoreTools: Record<string, ToolSpec<any>> = {
-    ...deps.registry,
-    verify_run: createVerifyRunTool(state),
-    apply_structured_edits: createApplyStructuredEditsTool(state)
-  };
-
   const installed = await applyMiddlewares({
     middlewares: deps.middlewares,
     ctx,
     state,
-    registry: registryWithCoreTools,
+    registry: deps.registry,
     provider: deps.llm,
     hooks: deps.hooks
   });

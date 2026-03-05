@@ -231,12 +231,21 @@ const buildPatchText = async (args: { ctx: ToolRunContext; baseDir: string; chan
   return `${chunks.join("\n\n")}\n`;
 };
 
-export const createApplyStructuredEditsTool = (state: AgentState): ToolSpec<ToolInput> => ({
+const getStateFromMemory = (ctx: ToolRunContext): AgentState | undefined => {
+  const candidate = ctx.memory.agentState;
+  if (!candidate || typeof candidate !== "object") return undefined;
+  return candidate as AgentState;
+};
+
+export const createApplyStructuredEditsTool = (): ToolSpec<ToolInput> => ({
   name: "apply_structured_edits",
   description: "Generate unified patch from structured edits, check/apply via git apply, and record patch artifacts.",
   inputSchema: { parse: parseInput },
   async run(input, ctx): Promise<ToolResult> {
-    const baseDir = resolve(input.cwd ?? ctx.memory.appDir ?? state.appDir ?? state.runDir);
+    const state = getStateFromMemory(ctx);
+    const runDir = ctx.memory.runDir ?? state?.runDir ?? process.cwd();
+    const appDir = ctx.memory.appDir ?? state?.appDir;
+    const baseDir = resolve(input.cwd ?? appDir ?? runDir);
     const files = new Map<string, FileChange>();
 
     try {
@@ -264,10 +273,12 @@ export const createApplyStructuredEditsTool = (state: AgentState): ToolSpec<Tool
       const changes = [...files.values()];
       const patchText = await buildPatchText({ ctx, baseDir, changes });
       const patchRef = storeBlob(ctx, patchText, "patch");
-      const patchDir = join(state.runDir, "patches");
+      const patchDir = join(runDir, "patches");
       await mkdir(patchDir, { recursive: true });
       const seq = String((ensurePatchPaths(ctx).length ?? 0) + 1).padStart(4, "0");
-      const patchPath = join(patchDir, `turn-${state.budgets.usedTurns}-task-${state.currentTaskId ?? "unknown"}-${seq}.patch`);
+      const turn = state?.budgets.usedTurns ?? 0;
+      const taskId = state?.currentTaskId ?? "unknown";
+      const patchPath = join(patchDir, `turn-${turn}-task-${taskId}-${seq}.patch`);
       await writeFile(patchPath, patchText, "utf8");
       const patchPaths = ensurePatchPaths(ctx);
       if (!patchPaths.includes(patchPath)) patchPaths.push(patchPath);

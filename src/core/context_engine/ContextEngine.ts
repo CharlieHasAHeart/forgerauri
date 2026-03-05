@@ -62,7 +62,7 @@ export class ContextEngine {
     const nextActionRequest =
       evidence
         ? `Phase=${args.phase}. Produce deterministic output for the requested phase using provided evidence first.`
-        : `Phase=${args.phase}. Evidence is missing. First action MUST call verify_run to produce LatestEvidence.`;
+        : `Phase=${args.phase}. Evidence is missing. First action MUST call an available verification tool to produce LatestEvidence.`;
 
     const packet: ContextPacket = {
       systemRules: buildSystemRules(),

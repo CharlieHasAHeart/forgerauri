@@ -84,7 +84,7 @@ describe("apply_structured_edits tool", () => {
     state.appDir = appDir;
     state.currentTaskId = "t1";
     const ctx = createCtx(runDir, appDir);
-    const tool = createApplyStructuredEditsTool(state);
+    const tool = createApplyStructuredEditsTool();
 
     const input: unknown = {
       cwd: appDir,
@@ -128,7 +128,7 @@ describe("apply_structured_edits tool", () => {
       return originalRunner(cmd, args, cwd);
     };
 
-    const tool = createApplyStructuredEditsTool(state);
+    const tool = createApplyStructuredEditsTool();
     const result = await tool.run(
       {
         cwd: appDir,
