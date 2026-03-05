@@ -1,11 +1,27 @@
 import type { AgentStatus } from "../contracts/state.js";
 import type { PlanChangeRequestV2 } from "../contracts/planning.js";
 
-export type HumanReviewFn = (input: {
-  reason: string;
-  patchPaths: string[];
-  phase: AgentStatus;
-}) => Promise<boolean>;
+export type HumanReviewRequest =
+  | {
+      action: "command_exec";
+      phase: AgentStatus;
+      reason: string;
+      command: string;
+      args: string[];
+      cwd: string;
+    }
+  | {
+      action: "patch_apply";
+      phase: AgentStatus;
+      reason: string;
+      toolName: string;
+      inputSummary?: string;
+      patchRef?: string;
+      patchPath?: string;
+      changedFiles?: string[];
+    };
+
+export type HumanReviewFn = (input: HumanReviewRequest) => Promise<boolean>;
 
 export type PlanChangeReviewContext = {
   request: PlanChangeRequestV2;

@@ -7,7 +7,7 @@ import type { ToolRunContext, ToolSpec } from "../../contracts/tools.js";
 import type { KernelHooks } from "../../contracts/hooks.js";
 import type { Workspace } from "../../contracts/workspace.js";
 import type { AgentTurnAuditCollector } from "../telemetry/audit.js";
-import type { HumanReviewFn, PlanChangeReviewFn } from "../contracts.js";
+import type { PlanChangeReviewFn } from "../contracts.js";
 import type { AgentEvent } from "../telemetry/events.js";
 import { handleReplan } from "./replanner.js";
 import { runTaskAttempt } from "./task_attempt.js";
@@ -31,7 +31,6 @@ export const runTaskWithRetries = async (args: {
   completed: Set<string>;
   taskFailures: Map<string, string[]>;
   replans: number;
-  humanReview?: HumanReviewFn;
   requestPlanChangeReview: PlanChangeReviewFn;
   contextEngine: ContextEngine;
   workspace: Workspace;
@@ -65,7 +64,6 @@ export const runTaskWithRetries = async (args: {
       runtimePathsResolver: args.runtimePathsResolver,
       hooks: args.hooks,
       audit: args.audit,
-      humanReview: args.humanReview,
       contextEngine: args.contextEngine,
       workspace: args.workspace,
       onEvent: args.onEvent

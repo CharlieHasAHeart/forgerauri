@@ -8,7 +8,7 @@ import type { KernelHooks } from "../../contracts/hooks.js";
 import type { Workspace } from "../../contracts/workspace.js";
 import type { AgentTurnAuditCollector } from "../telemetry/audit.js";
 import { setUsedTurn } from "../runtime/budgets.js";
-import type { HumanReviewFn, PlanChangeReviewFn } from "../contracts.js";
+import type { PlanChangeReviewFn } from "../contracts.js";
 import { setStateError } from "../execution/errors.js";
 import type { AgentEvent } from "../telemetry/events.js";
 import { runTaskWithRetries } from "./task_runner.js";
@@ -31,7 +31,6 @@ export const runTurn = async (args: {
   completed: Set<string>;
   taskFailures: Map<string, string[]>;
   replans: number;
-  humanReview?: HumanReviewFn;
   requestPlanChangeReview: PlanChangeReviewFn;
   contextEngine: ContextEngine;
   workspace: Workspace;
@@ -74,7 +73,6 @@ export const runTurn = async (args: {
     completed: args.completed,
     taskFailures: args.taskFailures,
     replans: args.replans,
-    humanReview: args.humanReview,
     requestPlanChangeReview: args.requestPlanChangeReview,
     contextEngine: args.contextEngine,
     workspace: args.workspace,

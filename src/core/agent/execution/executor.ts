@@ -7,9 +7,6 @@ import type { ToolRunContext, ToolSpec } from "../../contracts/tools.js";
 import type { KernelHooks } from "../../contracts/hooks.js";
 import { setStateError, truncate } from "./errors.js";
 import type { AgentEvent } from "../telemetry/events.js";
-import type { HumanReviewFn as HumanReviewFnType } from "../contracts.js";
-
-export type HumanReviewFn = HumanReviewFnType;
 
 export type ExecutedToolCall = {
   ok: boolean;
@@ -98,42 +95,85 @@ export const executeToolCall = async (args: {
   state: AgentState;
   policy: AgentPolicy;
   hooks?: KernelHooks;
-  humanReview?: HumanReviewFn;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<ExecutedToolCall> => {
-  const { call, state, humanReview } = args;
-
-  if (!args.policy.safety.allowed_tools.includes(call.name)) {
-    const note = `tool ${call.name} blocked by policy`;
-    setStateError(state, "Config", note);
-    return { ok: false, note, touchedPaths: [], toolName: call.name };
-  }
-
-  const tool = args.registry[call.name];
-  if (!tool) {
-    const note = `unknown tool ${call.name}`;
-    setStateError(state, "Unknown", note);
-    return { ok: false, note, touchedPaths: [], toolName: call.name };
-  }
-
-  let parsedInput: unknown = call.input;
-  if (tool.inputSchema) {
-    try {
-      parsedInput = tool.inputSchema.parse(call.input);
-    } catch (error) {
-      const note = `tool ${call.name} input invalid: ${error instanceof Error ? truncate(error.message, 240) : "invalid input"}`;
+  const { state } = args;
+  const resolveExecutableCall = (candidate: { name: string; input: unknown }):
+    | { ok: true; tool: ToolSpec<any>; parsedInput: unknown; call: { name: string; input: unknown } }
+    | { ok: false; note: string } => {
+    if (!args.policy.safety.allowed_tools.includes(candidate.name)) {
+      const note = `tool ${candidate.name} blocked by policy`;
       setStateError(state, "Config", note);
-      return { ok: false, note, touchedPaths: [], toolName: call.name };
+      return { ok: false, note };
+    }
+
+    const tool = args.registry[candidate.name];
+    if (!tool) {
+      const note = `unknown tool ${candidate.name}`;
+      setStateError(state, "Unknown", note);
+      return { ok: false, note };
+    }
+
+    let parsedInput: unknown = candidate.input;
+    if (tool.inputSchema) {
+      try {
+        parsedInput = tool.inputSchema.parse(candidate.input);
+      } catch (error) {
+        const note = `tool ${candidate.name} input invalid: ${error instanceof Error ? truncate(error.message, 240) : "invalid input"}`;
+        setStateError(state, "Config", note);
+        return { ok: false, note };
+      }
+    }
+
+    return {
+      ok: true,
+      tool,
+      parsedInput,
+      call: { name: candidate.name, input: parsedInput }
+    };
+  };
+
+  let prepared = resolveExecutableCall({ name: args.call.name, input: args.call.input });
+  if (!prepared.ok) {
+    return { ok: false, note: prepared.note, touchedPaths: [], toolName: args.call.name };
+  }
+
+  let result: Awaited<ReturnType<typeof prepared.tool.run>> | undefined;
+  if (args.hooks?.onBeforeToolCall) {
+    try {
+      const decision = await args.hooks.onBeforeToolCall({
+        call: prepared.call,
+        ctx: args.ctx,
+        state
+      });
+      if (decision?.action === "deny") {
+        setStateError(state, "Config", decision.error.message, decision.error.code);
+        return { ok: false, note: decision.error.message, touchedPaths: [], toolName: prepared.call.name };
+      }
+      if (decision?.action === "override_result") {
+        result = decision.result;
+      } else if (decision?.action === "override_call") {
+        prepared = resolveExecutableCall(decision.call);
+        if (!prepared.ok) {
+          return { ok: false, note: prepared.note, touchedPaths: [], toolName: args.call.name };
+        }
+      }
+    } catch (error) {
+      const note = `kernel hook onBeforeToolCall failed: ${error instanceof Error ? error.message : String(error)}`;
+      setStateError(state, "Unknown", note);
+      const toolName = prepared.ok ? prepared.call.name : args.call.name;
+      return { ok: false, note, touchedPaths: [], toolName };
     }
   }
 
-  let result: Awaited<ReturnType<typeof tool.run>>;
-  try {
-    result = await tool.run(parsedInput as never, args.ctx);
-  } catch (error) {
-    const note = `tool ${call.name} threw: ${error instanceof Error ? error.message : String(error)}`;
-    setStateError(state, "Unknown", note);
-    return { ok: false, note, touchedPaths: [], toolName: call.name };
+  if (!result) {
+    try {
+      result = await prepared.tool.run(prepared.parsedInput as never, args.ctx);
+    } catch (error) {
+      const note = `tool ${prepared.call.name} threw: ${error instanceof Error ? error.message : String(error)}`;
+      setStateError(state, "Unknown", note);
+      return { ok: false, note, touchedPaths: [], toolName: prepared.call.name };
+    }
   }
 
   const touched = result.meta?.touchedPaths ?? [];
@@ -150,38 +190,14 @@ export const executeToolCall = async (args: {
       } catch (error) {
         const note = `kernel hook onPatchPathsChanged failed: ${error instanceof Error ? error.message : String(error)}`;
         setStateError(state, "Unknown", note);
-        return { ok: false, note, touchedPaths: touched, resultData: result.data, toolName: call.name };
+        return { ok: false, note, touchedPaths: touched, resultData: result.data, toolName: prepared.call.name };
       }
     }
   }
 
   if (state.patchPaths.length > state.budgets.maxPatches) {
     setStateError(state, "Config", `Patch budget exceeded: ${state.patchPaths.length} > ${state.budgets.maxPatches}`);
-    return { ok: false, note: state.lastError?.message, touchedPaths: touched, resultData: result.data, toolName: call.name };
-  }
-
-  if (newPatchPaths.length > 0 && humanReview) {
-    const approved = await humanReview({
-      reason: "Generated PATCH files require manual merge",
-      patchPaths: newPatchPaths,
-      phase: state.status
-    });
-    state.humanReviews.push({
-      reason: "Generated PATCH files require manual merge",
-      approved,
-      patchPaths: newPatchPaths,
-      phase: state.status
-    });
-    if (!approved) {
-      setStateError(state, "Config", "Human review rejected automatic continuation after PATCH generation");
-      return {
-        ok: false,
-        note: state.lastError?.message,
-        touchedPaths: touched,
-        resultData: result.data,
-        toolName: call.name
-      };
-    }
+    return { ok: false, note: state.lastError?.message, touchedPaths: touched, resultData: result.data, toolName: prepared.call.name };
   }
 
   if (!result.ok) {
@@ -194,7 +210,7 @@ export const executeToolCall = async (args: {
   } else if (args.hooks?.onToolResult) {
     try {
       await args.hooks.onToolResult({
-        call: { name: call.name, input: call.input },
+        call: prepared.call,
         result,
         ctx: args.ctx,
         state
@@ -202,7 +218,7 @@ export const executeToolCall = async (args: {
     } catch (error) {
       const note = `kernel hook onToolResult failed: ${error instanceof Error ? error.message : String(error)}`;
       setStateError(state, "Unknown", note);
-      return { ok: false, note, touchedPaths: touched, resultData: result.data, toolName: call.name };
+      return { ok: false, note, touchedPaths: touched, resultData: result.data, toolName: prepared.call.name };
     }
   }
 
@@ -211,7 +227,7 @@ export const executeToolCall = async (args: {
     note: result.ok ? "ok" : state.lastError?.message,
     touchedPaths: touched,
     resultData: result.data,
-    toolName: call.name
+    toolName: prepared.call.name
   };
 };
 
@@ -223,7 +239,6 @@ export const executeActionPlan = async (args: {
   state: AgentState;
   policy: AgentPolicy;
   hooks?: KernelHooks;
-  humanReview?: HumanReviewFn;
   task: PlanTask;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<{
@@ -246,7 +261,6 @@ export const executeActionPlan = async (args: {
       state: args.state,
       policy: args.policy,
       hooks: args.hooks,
-      humanReview: args.humanReview,
       onEvent: args.onEvent
     });
     args.onEvent?.({ type: "tool_end", name: call.name, ok: executed.ok, note: executed.note });

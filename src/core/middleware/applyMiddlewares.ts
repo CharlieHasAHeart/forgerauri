@@ -14,6 +14,21 @@ const chainHooks = <TArgs>(handlers: Array<((args: TArgs) => void | Promise<void
   };
 };
 
+const chainBeforeToolCall = (
+  handlers: Array<KernelHooks["onBeforeToolCall"] | undefined>
+): KernelHooks["onBeforeToolCall"] | undefined => {
+  const active = handlers.filter((item): item is NonNullable<KernelHooks["onBeforeToolCall"]> => typeof item === "function");
+  if (active.length === 0) return undefined;
+  return async (args) => {
+    for (const handler of active) {
+      const decision = await handler(args);
+      if (!decision || decision.action === "allow") continue;
+      return decision;
+    }
+    return { action: "allow" };
+  };
+};
+
 export const applyMiddlewares = async (args: {
   middlewares?: KernelMiddleware[];
   ctx: ToolRunContext;
@@ -67,12 +82,19 @@ export const applyMiddlewares = async (args: {
     args.hooks?.onToolResult,
     ...middlewares.map((mw) => mw.hooks?.onToolResult)
   ]);
+  const onBeforeToolCall = chainBeforeToolCall([
+    args.hooks?.onBeforeToolCall,
+    ...middlewares.map((mw) => mw.hooks?.onBeforeToolCall)
+  ]);
   const onPatchPathsChanged = chainHooks([
     args.hooks?.onPatchPathsChanged,
     ...middlewares.map((mw) => mw.hooks?.onPatchPathsChanged)
   ]);
 
-  const hooks: KernelHooks | undefined = onToolResult || onPatchPathsChanged ? { onToolResult, onPatchPathsChanged } : undefined;
+  const hooks: KernelHooks | undefined =
+    onBeforeToolCall || onToolResult || onPatchPathsChanged
+      ? { onBeforeToolCall, onToolResult, onPatchPathsChanged }
+      : undefined;
 
   return { registry, provider, hooks };
 };

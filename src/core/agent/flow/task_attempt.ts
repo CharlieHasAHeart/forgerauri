@@ -11,7 +11,6 @@ import { setStateError } from "../execution/errors.js";
 import type { AgentEvent } from "../telemetry/events.js";
 import { recordTaskActionPlan } from "../telemetry/recorder.js";
 import { gateToolCalls } from "../policy/toolcall_gate.js";
-import type { HumanReviewFn } from "../contracts.js";
 import { ContextEngine } from "../../context_engine/ContextEngine.js";
 import { serializeContextPacket } from "../../contracts/context.js";
 import { storeBlob } from "../../utils/blobStore.js";
@@ -34,7 +33,6 @@ export const runTaskAttempt = async (args: {
   runtimePathsResolver: RuntimePathsResolver;
   hooks?: KernelHooks;
   audit: AgentTurnAuditCollector;
-  humanReview?: HumanReviewFn;
   contextEngine: ContextEngine;
   workspace: Workspace;
   onEvent?: (event: AgentEvent) => void;
@@ -148,7 +146,6 @@ export const runTaskAttempt = async (args: {
     state: args.state,
     policy: args.policy,
     hooks: args.hooks,
-    humanReview: args.humanReview,
     task: args.task,
     onEvent: args.onEvent
   });

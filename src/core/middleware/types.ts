@@ -9,6 +9,7 @@ export type KernelMiddleware = {
   tools?: () => Record<string, ToolSpec<any>>;
   wrapProvider?: (provider: LlmPort) => LlmPort;
   hooks?: {
+    onBeforeToolCall?: KernelHooks["onBeforeToolCall"];
     onToolResult?: KernelHooks["onToolResult"];
     onPatchPathsChanged?: KernelHooks["onPatchPathsChanged"];
   };

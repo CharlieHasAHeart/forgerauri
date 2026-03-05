@@ -8,7 +8,7 @@ import type { KernelHooks } from "../../contracts/hooks.js";
 import type { Workspace } from "../../contracts/workspace.js";
 import type { AgentTurnAuditCollector } from "../telemetry/audit.js";
 import { recordPlanProposed } from "../telemetry/recorder.js";
-import type { HumanReviewFn, PlanChangeReviewFn } from "../contracts.js";
+import type { PlanChangeReviewFn } from "../contracts.js";
 import type { AgentEvent } from "../telemetry/events.js";
 import { runTurn } from "./turn.js";
 import { preflightRuntime } from "../runtime/preflight.js";
@@ -30,7 +30,6 @@ export const runPlanFirstAgent = async (args: {
   workspace: Workspace;
   contextEngine: ContextEngine;
   hooks?: KernelHooks;
-  humanReview?: HumanReviewFn;
   requestPlanChangeReview?: PlanChangeReviewFn;
   onEvent?: (event: AgentEvent) => void;
 }): Promise<void> => {
@@ -109,7 +108,6 @@ export const runPlanFirstAgent = async (args: {
       completed,
       taskFailures,
       replans,
-      humanReview: args.humanReview,
       requestPlanChangeReview,
       onEvent: args.onEvent,
       contextEngine: args.contextEngine,

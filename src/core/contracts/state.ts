@@ -24,7 +24,21 @@ export type AgentState = {
     usedRepairs: number;
   };
   patchPaths: string[];
-  humanReviews: Array<{ reason: string; approved: boolean; patchPaths: string[]; phase?: AgentStatus }>;
+  humanReviews: Array<{
+    action: "command_exec" | "patch_apply";
+    approved: boolean;
+    phase: AgentStatus;
+    reason?: string;
+    toolName?: string;
+    inputSummary?: string;
+    patchRef?: string;
+    patchPath?: string;
+    changedFiles?: string[];
+    command?: string;
+    args?: string[];
+    cwd?: string;
+    ts?: number;
+  }>;
   lastDeterministicFixes: string[];
   repairKnownChecked: boolean;
   touchedFiles: string[];

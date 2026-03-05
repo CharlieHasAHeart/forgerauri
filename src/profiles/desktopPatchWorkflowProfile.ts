@@ -1,6 +1,7 @@
 import { createApplyStructuredEditsTool } from "../tools/patch/applyStructuredEdits.js";
 import { createVerifyRunTool } from "../tools/verify/runVerifiedCommand.js";
 import { createFilesystemMiddleware } from "../middleware/filesystem.js";
+import { createHumanInTheLoopMiddleware } from "../middleware/humanInTheLoop.js";
 import { defaultAgentPolicy } from "../core/agent/policy/policy.js";
 import type { HumanReviewPort } from "../core/agent/contracts.js";
 import type { CoreRunDeps } from "../core/agent/flow/runAgent.js";
@@ -73,6 +74,12 @@ export const createDesktopPatchWorkflowDeps = (args: DesktopPatchWorkflowProfile
     middlewares: [
       ...(args.baseMiddlewares ?? []),
       createFilesystemMiddleware({ readOnly: true }),
+      createHumanInTheLoopMiddleware({
+        humanReview: args.humanReview?.humanReview,
+        options: {
+          patchTools: ["apply_structured_edits"]
+        }
+      }),
       createWorkflowRulesMiddleware()
     ]
   };

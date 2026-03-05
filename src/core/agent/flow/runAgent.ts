@@ -155,7 +155,6 @@ export const runCoreAgent = async (args: {
       maxToolCallsPerTurn,
       audit,
       policy: deps.policy,
-      humanReview: deps.humanReview?.humanReview,
       requestPlanChangeReview: deps.humanReview?.requestPlanChangeReview,
       onEvent,
       runtimePathsResolver,
