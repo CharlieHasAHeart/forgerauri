@@ -1,112 +1,69 @@
 # Agent Skeleton
 
-This document is the quick map of the current plan-first agent runtime and acceptance architecture.
+This is the quick map of the current plan-first core runtime.
 
 ## 1) Entry and Runtime Boot
 
-- Entry: `src/agent/runtime/run.ts`
+- Entry: `src/core/agent/flow/runAgent.ts`
 - Responsibilities:
   - build initial `AgentState`
-  - build `ToolRunContext` (`ctx.memory` as cross-tool runtime memory)
-  - initialize registry/provider/policy
+  - build `ToolRunContext` (`ctx.memory` as shared runtime memory)
+  - install middleware (`KernelMiddleware`)
   - call orchestrator loop
   - flush audit
 
 ## 2) Execution Chain
 
-- `src/agent/runtime/orchestrator.ts`
+- `src/core/agent/flow/orchestrator.ts`
   - Plan -> Turn loop -> terminal state
-- `src/agent/runtime/turn.ts`
+- `src/core/agent/flow/turn.ts`
   - choose next task and run retries
-- `src/agent/runtime/task_runner.ts`
+- `src/core/agent/flow/task_runner.ts`
   - per-task retry and replan boundary
-- `src/agent/runtime/task_attempt.ts`
+- `src/core/agent/flow/task_attempt.ts`
   - propose tool calls for one attempt
   - execute action plan
-  - write per-turn evidence context (`run_id/turn/task_id`)
-- `src/agent/runtime/executor.ts`
+- `src/core/agent/execution/executor.ts`
   - execute each tool call with policy/schema checks
-  - emit evidence events and enforce acceptance gate after `tool_verify_project`
+  - evaluate deterministic success criteria
 
-## 3) Evidence System
+## 3) Core Contracts
 
-- Writer: `src/agent/core/evidence/logger.ts`
-- Reader: `src/agent/core/evidence/reader.ts`
-- File: `<outDir>/run_evidence.jsonl`
+- `src/core/contracts/llm.ts`: LLM port
+- `src/core/contracts/tools.ts`: tool (`ToolSpec`) contract
+- `src/core/contracts/hooks.ts`: hook (`KernelHooks`) contract
+- `src/core/contracts/runtime.ts`: runtime paths + command runner
+- `src/core/contracts/state.ts`: agent state contract
+- `src/core/contracts/workspace.ts`: workspace contract
 
-Event types:
-- `tool_called`
-- `tool_returned`
-- `command_ran` (with `command_id` when available)
-- `acceptance_step_started`
-- `acceptance_step_skipped`
-- `acceptance_step_finished`
+## 4) Runtime Paths
 
-The evidence stream is append-only and used for deterministic replay/diagnosis.
-
-## 4) Runtime Paths (single runtime truth)
-
-- Type: `src/agent/core/runtime_paths/types.ts`
-- Resolver: `src/agent/runtime/get_runtime_paths.ts`
+- Resolver: `src/core/runtime_paths/getRuntimePaths.ts`
 - Priority: `state.runtimePaths > ctx.memory.runtimePaths > fallback inference`
+- Canonical runtime paths:
+  - `repoRoot`
+  - `appDir`
+  - `tauriDir`
 
-These paths feed both execution and acceptance:
-- `repoRoot`
-- `appDir`
-- `tauriDir`
+## 5) Middleware and Tools
 
-## 5) Acceptance Pipeline Catalog (single source of truth)
+- Middleware contract: `src/core/middleware/types.ts` (`KernelMiddleware`)
+- Middleware installer: `src/core/middleware/applyMiddlewares.ts`
+- Example middleware package: `src/core/middleware/filesystem.ts`
+  - registers tool entries (`read_file`, `write_file`, `edit_file`, `glob`, `grep`, `read_blob`)
+  - wraps provider via `wrapProvider`
+  - emits hook behavior through `KernelHooks`
 
-- `src/agent/core/acceptance/catalog.ts`
-- Golden pipeline: `desktop_tauri_default`
+## 6) Profile Boundary
 
-The catalog defines:
-- command list (`command_id -> cmd/args/cwd_policy/expect_exit_code`)
-- pipeline step order (+ `optional`)
-- execution policy (`retries`, `prechecks`)
+- Profiles live in `src/profiles/**`.
+- Core must not import profile modules.
+- Profile role: assemble `{ request, workspace, runtime, deps }` for `runCoreAgent`.
 
-`verify_project` execution and acceptance verification both depend on this same catalog to prevent drift.
+## 7) Debugging Guide
 
-## 6) Deterministic Acceptance Engine
-
-- `src/agent/core/acceptance/engine.ts`
-- key intents:
-  - `verify_acceptance_pipeline`
-  - `verify_command`
-  - `verify_tool_exit`
-  - `bootstrap`
-  - `ensure_paths`
-
-For `verify_acceptance_pipeline`:
-- required steps require successful `command_ran`
-- optional steps can be satisfied by:
-  - successful `command_ran`, or
-  - `acceptance_step_skipped` for the same step
-- matching prefers `command_id` and still checks cmd/args/cwd/exit_code
-
-## 7) verify_project Closed Loop
-
-- Executor: `src/agent/tools/impl/verify_project.ts`
-  - executes pipeline steps from catalog
-  - applies retry/precheck policy
-  - emits step-level evidence callbacks
-- Tool wrapper: `src/agent/tools/core/verify_project/index.ts`
-  - loads previous evidence
-  - enables `skip_if_cmd_ran_ok`
-  - writes `command_ran` and step events to evidence
-- Runtime gate: `src/agent/runtime/executor.ts`
-  - runs `evaluateAcceptanceRuntime(...)` after `tool_verify_project`
-  - if not satisfied -> sets `VERIFY_ACCEPTANCE_FAILED` and fails the tool result
-
-## 8) Debugging Guide
-
-1. Open latest `run_evidence.jsonl`.
-2. Locate `acceptance_step_*` around failed stage:
-   - skipped reason (`precheck_skip_if_exists` / `precheck_skip_if_cmd_ran_ok`)
-3. Check matching `command_ran`:
-   - `command_id`
-   - canonical `cwd`
-   - `exit_code`
-4. If runtime fails with `VERIFY_ACCEPTANCE_FAILED`:
-   - inspect acceptance diagnostics in state/audit
-   - compare missing `acceptance_step` requirements vs evidence stream
+1. Inspect audit JSON in `<runDir>/generated/agent_logs/`.
+2. Check per-turn tool calls/results and failure note.
+3. If a task fails repeatedly, inspect:
+   - state summary (`src/core/agent/state/state_summary.ts`)
+   - planner output validity and criteria failures in audit turns.
