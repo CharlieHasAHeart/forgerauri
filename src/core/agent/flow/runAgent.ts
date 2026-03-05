@@ -47,17 +47,54 @@ export type CoreRunAgentResult = {
   state: AgentState;
 };
 
-export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResult> => {
-  const maxTurns = args.maxTurns ?? 16;
-  const maxToolCallsPerTurn = args.maxToolCallsPerTurn ?? 4;
-  const maxPatches = args.maxPatches ?? 8;
-  const truncation = args.truncation ?? "auto";
-  const compactionThreshold = args.compactionThreshold;
+export type CoreRunRequest = {
+  goal: string;
+  specPath: string;
+  modelHint?: string;
+};
+
+export type CoreRunRuntime = {
+  outDir: string;
+  runtimeRepoRoot?: string;
+  runtimePathsResolver?: RuntimePathsResolver;
+  maxTurns?: number;
+  maxToolCallsPerTurn?: number;
+  maxPatches?: number;
+  truncation?: "auto" | "disabled";
+  compactionThreshold?: number;
+};
+
+export type CoreRunDeps = {
+  policy: AgentPolicy;
+  registry: Record<string, ToolSpec<any>>;
+  llm: LlmPort;
+  commandRunner: CommandRunnerPort;
+  planner?: Planner;
+  audit?: AgentTurnAuditCollector;
+  humanReview?: HumanReviewPort;
+  middlewares?: KernelMiddleware[];
+  hooks?: KernelHooks;
+  renderToolIndex?: (registry: Record<string, ToolSpec<any>>) => string;
+  onEvent?: (event: AgentEvent) => void;
+};
+
+export const runCoreAgent = async (args: {
+  request: CoreRunRequest;
+  runtime: CoreRunRuntime;
+  deps: CoreRunDeps;
+}): Promise<CoreRunAgentResult> => {
+  const { request, runtime, deps } = args;
+  const maxTurns = runtime.maxTurns ?? 16;
+  const maxToolCallsPerTurn = runtime.maxToolCallsPerTurn ?? 4;
+  const maxPatches = runtime.maxPatches ?? 8;
+  const truncation = runtime.truncation ?? "auto";
+  const compactionThreshold = runtime.compactionThreshold;
+  const onEvent = deps.onEvent ?? deps.humanReview?.onEvent;
 
   const state: AgentState = {
-    goal: args.goal,
-    specPath: args.specPath,
-    outDir: args.outDir,
+    goal: request.goal,
+    specPath: request.specPath,
+    outDir: runtime.outDir,
     flags: {
       truncation,
       compactionThreshold
@@ -83,13 +120,13 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
   };
 
   const ctx: ToolRunContext = {
-    provider: args.llm,
-    runCmdImpl: args.commandRunner,
+    provider: deps.llm,
+    runCmdImpl: deps.commandRunner,
     flags: {
       maxPatchesPerTurn: maxPatches
     },
     memory: {
-      repoRoot: args.runtimeRepoRoot ?? process.cwd(),
+      repoRoot: runtime.runtimeRepoRoot ?? process.cwd(),
       specPath: state.specPath,
       outDir: state.outDir,
       patchPaths: [],
@@ -97,7 +134,7 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     }
   };
 
-  const runtimePathsResolver = args.runtimePathsResolver ?? defaultGetRuntimePaths;
+  const runtimePathsResolver = runtime.runtimePathsResolver ?? defaultGetRuntimePaths;
   const initialRuntimePaths = runtimePathsResolver(ctx, state);
   ctx.memory.runtimePaths = initialRuntimePaths;
   ctx.memory.appDir = initialRuntimePaths.appDir;
@@ -105,23 +142,23 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
   state.runtimePaths = initialRuntimePaths;
   state.appDir = initialRuntimePaths.appDir;
 
-  const audit = args.audit ?? new AgentTurnAuditCollector(args.goal);
+  const audit = deps.audit ?? new AgentTurnAuditCollector(request.goal);
   await audit.start(state.outDir, {
     specPath: state.specPath,
     outDir: state.outDir,
-    providerName: args.llm.name,
-    model: args.modelHint,
+    providerName: deps.llm.name,
+    model: request.modelHint,
     truncation: state.flags.truncation,
     compactionThreshold: state.flags.compactionThreshold
   });
 
   const installed = await applyMiddlewares({
-    middlewares: args.middlewares,
+    middlewares: deps.middlewares,
     ctx,
     state,
-    registry: args.registry,
-    provider: args.llm,
-    hooks: args.hooks
+    registry: deps.registry,
+    provider: deps.llm,
+    hooks: deps.hooks
   });
   ctx.provider = installed.provider;
 
@@ -130,16 +167,16 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     await runPlanFirstAgent({
       state,
       provider: installed.provider,
-      planner: args.planner ?? noopPlanner,
+      planner: deps.planner ?? noopPlanner,
       registry: installed.registry,
       ctx,
       maxTurns,
       maxToolCallsPerTurn,
       audit,
-      policy: args.policy,
-      humanReview: args.humanReview?.humanReview,
-      requestPlanChangeReview: args.humanReview?.requestPlanChangeReview,
-      onEvent: args.onEvent ?? args.humanReview?.onEvent,
+      policy: deps.policy,
+      humanReview: deps.humanReview?.humanReview,
+      requestPlanChangeReview: deps.humanReview?.requestPlanChangeReview,
+      onEvent,
       runtimePathsResolver,
       hooks: installed.hooks
     });
@@ -161,8 +198,8 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     budgets: state.budgets,
     lastError: state.lastError,
     status: state.status,
-    policy: args.policy,
-    toolIndex: args.renderToolIndex ? args.renderToolIndex(installed.registry) : ""
+    policy: deps.policy,
+    toolIndex: deps.renderToolIndex ? deps.renderToolIndex(installed.registry) : ""
   });
 
   if (runError) {
@@ -170,7 +207,7 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
   }
 
   if (state.status === "done") {
-    (args.onEvent ?? args.humanReview?.onEvent)?.({ type: "done", auditPath });
+    onEvent?.({ type: "done", auditPath });
     return {
       ok: true,
       summary: "Agent completed successfully",
@@ -181,7 +218,7 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
   }
 
   const message = state.lastError?.message ?? "max turns reached";
-  (args.onEvent ?? args.humanReview?.onEvent)?.({ type: "failed", message, auditPath });
+  onEvent?.({ type: "failed", message, auditPath });
   return {
     ok: false,
     summary: message,
@@ -189,4 +226,37 @@ export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResu
     patchPaths: state.patchPaths,
     state
   };
+};
+
+export const runAgent = async (args: CoreRunAgentArgs): Promise<CoreRunAgentResult> => {
+  return runCoreAgent({
+    request: {
+      goal: args.goal,
+      specPath: args.specPath,
+      modelHint: args.modelHint
+    },
+    runtime: {
+      outDir: args.outDir,
+      runtimeRepoRoot: args.runtimeRepoRoot,
+      runtimePathsResolver: args.runtimePathsResolver,
+      maxTurns: args.maxTurns,
+      maxToolCallsPerTurn: args.maxToolCallsPerTurn,
+      maxPatches: args.maxPatches,
+      truncation: args.truncation,
+      compactionThreshold: args.compactionThreshold
+    },
+    deps: {
+      policy: args.policy,
+      registry: args.registry,
+      llm: args.llm,
+      commandRunner: args.commandRunner,
+      planner: args.planner,
+      audit: args.audit,
+      humanReview: args.humanReview,
+      middlewares: args.middlewares,
+      hooks: args.hooks,
+      renderToolIndex: args.renderToolIndex,
+      onEvent: args.onEvent
+    }
+  });
 };
