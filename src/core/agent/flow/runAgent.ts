@@ -91,6 +91,8 @@ export const runCoreAgent = async (args: {
     toolCalls: [],
     toolResults: [],
     planHistory: [],
+    milestoneReviewHistory: [],
+    goalReviewHistory: [],
     contextHistory: [],
     memory: {
       decisions: [],

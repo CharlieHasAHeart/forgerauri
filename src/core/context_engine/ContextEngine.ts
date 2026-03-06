@@ -3,7 +3,7 @@ import type { AgentPolicy } from "../contracts/policy.js";
 import type { AgentState } from "../contracts/state.js";
 import type { ToolRunContext, ToolSpec } from "../contracts/tools.js";
 import type { Workspace } from "../contracts/workspace.js";
-import type { PlanTask, PlanV1 } from "../contracts/planning.js";
+import type { PlanTask, PlanV2 } from "../contracts/planning.js";
 import { storeBlob } from "../utils/blobStore.js";
 import { buildSystemRules } from "./builders/buildSystemRules.js";
 import { buildProjectSnapshot } from "./builders/buildProjectSnapshot.js";
@@ -40,7 +40,7 @@ export class ContextEngine {
     policy: AgentPolicy;
     workspace: Workspace;
     task?: PlanTask;
-    plan?: PlanV1;
+    plan?: PlanV2;
     failures?: string[];
     evidence?: Evidence;
   }): Promise<ContextPacket> {
@@ -63,6 +63,24 @@ export class ContextEngine {
       evidence
         ? `Phase=${args.phase}. Produce deterministic output for the requested phase using provided evidence first.`
         : `Phase=${args.phase}. Evidence is missing. First action MUST call an available verification tool to produce LatestEvidence.`;
+    const activeMilestone = args.plan?.milestones.find((item) => item.id === args.state.activeMilestoneId);
+    const lastMilestoneReview = args.state.milestoneReviewHistory.at(-1);
+    const milestoneHintParts: string[] = [];
+    if (activeMilestone) {
+      milestoneHintParts.push(`Current milestone: ${activeMilestone.title} (${activeMilestone.id}).`);
+      if (activeMilestone.acceptance.length > 0) {
+        milestoneHintParts.push(
+          `Milestone acceptance: ${activeMilestone.acceptance
+            .map((criterion) => JSON.stringify(criterion))
+            .join(" | ")}`
+        );
+      }
+    }
+    if (lastMilestoneReview && !lastMilestoneReview.ok) {
+      milestoneHintParts.push(`Last milestone review failed: ${(lastMilestoneReview.failures ?? []).join(" ; ")}`);
+    }
+    const nextActionWithMilestone =
+      milestoneHintParts.length > 0 ? `${milestoneHintParts.join(" ")} ${nextActionRequest}` : nextActionRequest;
 
     const packet: ContextPacket = {
       systemRules: buildSystemRules(),
@@ -74,6 +92,7 @@ export class ContextEngine {
         registry: args.registry,
         maxChars: this.budget.projectSnapshotChars
       }),
+      milestone: milestoneHintParts.join(" "),
       latestEvidence: buildLatestEvidence({
         evidence,
         maxChars: this.budget.latestEvidenceChars
@@ -81,7 +100,7 @@ export class ContextEngine {
       relevantCode,
       changesSoFar: buildChangesSoFar({ state: args.state, maxChars: this.budget.changesSoFarChars }),
       memoryDecisions,
-      nextActionRequest
+      nextActionRequest: nextActionWithMilestone
     };
 
     const rendered = layoutPacket(packet);

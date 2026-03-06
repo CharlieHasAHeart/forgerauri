@@ -12,8 +12,23 @@ export type PlanTask = {
   success_criteria: SuccessCriterion[];
 };
 
+export type Milestone = {
+  id: string;
+  title: string;
+  description?: string;
+  tasks: PlanTask[];
+  acceptance: SuccessCriterion[];
+};
+
 export type PlanV1 = {
   version: "v1";
   goal: string;
   tasks: PlanTask[];
+};
+
+export type PlanV2 = {
+  version: "v2";
+  goal: string;
+  milestones: Milestone[];
+  goal_acceptance: SuccessCriterion[];
 };

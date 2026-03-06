@@ -1,7 +1,7 @@
 import type { ContextPacket } from "../contracts/context.js";
 import { serializeContextPacket } from "../contracts/context.js";
 import type { LlmMessage, LlmPort } from "../contracts/llm.js";
-import type { Planner, PlanChangeRequestV2, PlanTask, PlanV1, ToolCall } from "../contracts/planning.js";
+import type { Milestone, Planner, PlanChangeRequestV2, PlanTask, PlanV2, ToolCall } from "../contracts/planning.js";
 
 type ProposalResult<T> = {
   data: T;
@@ -87,16 +87,34 @@ const parsePlanTask = (value: unknown, index: number): PlanTask => {
   };
 };
 
-const parsePlan = (value: unknown): PlanV1 => {
+const parseMilestone = (value: unknown, index: number): Milestone => {
+  const obj = asObject(value, `milestones[${index}]`);
+  const tasksRaw = obj.tasks;
+  const acceptanceRaw = obj.acceptance;
+  if (!Array.isArray(tasksRaw)) throw new Error(`milestones[${index}].tasks must be array`);
+  if (!Array.isArray(acceptanceRaw)) throw new Error(`milestones[${index}].acceptance must be array`);
+  return {
+    id: asString(obj.id, `milestones[${index}].id`),
+    title: asString(obj.title, `milestones[${index}].title`),
+    description: typeof obj.description === "string" ? obj.description : undefined,
+    tasks: tasksRaw.map((item, taskIndex) => parsePlanTask(item, taskIndex)),
+    acceptance: acceptanceRaw.map((item, criteriaIndex) => parseSuccessCriterion(item, `milestones[${index}].acceptance[${criteriaIndex}]`))
+  };
+};
+
+const parsePlan = (value: unknown): PlanV2 => {
   const obj = asObject(value, "plan");
   const version = asString(obj.version, "plan.version");
-  if (version !== "v1") throw new Error("plan.version must be 'v1'");
-  const tasksRaw = obj.tasks;
-  if (!Array.isArray(tasksRaw)) throw new Error("plan.tasks must be array");
+  if (version !== "v2") throw new Error("plan.version must be 'v2'");
+  const milestonesRaw = obj.milestones;
+  const goalAcceptanceRaw = obj.goal_acceptance;
+  if (!Array.isArray(milestonesRaw)) throw new Error("plan.milestones must be array");
+  if (!Array.isArray(goalAcceptanceRaw)) throw new Error("plan.goal_acceptance must be array");
   return {
-    version: "v1",
+    version: "v2",
     goal: typeof obj.goal === "string" && obj.goal.trim() ? obj.goal.trim() : "",
-    tasks: tasksRaw.map((item, index) => parsePlanTask(item, index))
+    milestones: milestonesRaw.map((item, index) => parseMilestone(item, index)),
+    goal_acceptance: goalAcceptanceRaw.map((item, index) => parseSuccessCriterion(item, `goal_acceptance[${index}]`))
   };
 };
 
@@ -185,7 +203,7 @@ export const createDefaultPlanner = (args: { provider: LlmPort }): Planner => ({
     const result = await requestStructured({
       provider: args.provider,
       messages: planningMessages(input.context),
-      schemaHint: `{"version":"v1","goal":"string","tasks":[{"id":"string","title":"string","description":"string?","dependencies":["string"],"success_criteria":[{"type":"tool_result|file_exists|file_contains|command", "...":"..."}]}]}`,
+      schemaHint: `{"version":"v2","goal":"string","milestones":[{"id":"string","title":"string","description":"string?","tasks":[{"id":"string","title":"string","description":"string?","dependencies":["string"],"success_criteria":[{"type":"tool_result|file_exists|file_contains|command", "...":"..."}]}],"acceptance":[{"type":"tool_result|file_exists|file_contains|command","...":"..."}]}],"goal_acceptance":[{"type":"tool_result|file_exists|file_contains|command","...":"..."}]}`,
       validate: parsePlan
     });
     return {

@@ -1,4 +1,4 @@
-import type { PlanChangeRequestV2, PlanPatchOperation, PlanV1, ToolCall } from "./planning.js";
+import type { PlanChangeRequestV2, PlanPatchOperation, PlanV2, ToolCall } from "./planning.js";
 import type { RuntimePaths } from "./runtime.js";
 import type { Evidence } from "./context.js";
 
@@ -10,6 +10,7 @@ export type AgentState = {
   specRef: string;
   runDir: string;
   appDir?: string;
+  activeMilestoneId?: string;
   projectRoot?: string;
   runtimePaths?: RuntimePaths;
   currentTaskId?: string;
@@ -44,11 +45,13 @@ export type AgentState = {
   touchedFiles: string[];
   toolCalls: ToolCall[];
   toolResults: Array<{ name: string; ok: boolean; note?: string }>;
-  planData?: PlanV1;
+  planData?: PlanV2;
   planVersion?: number;
   completedTasks?: string[];
+  milestoneReviewHistory: Array<{ milestoneId: string; ok: boolean; failures?: string[]; ts: number }>;
+  goalReviewHistory: Array<{ ok: boolean; failures?: string[]; ts: number }>;
   planHistory?: Array<
-    | { type: "initial"; version: number; plan: PlanV1 }
+    | { type: "initial"; version: number; plan: PlanV2 }
     | { type: "change_request"; request: PlanChangeRequestV2 }
     | { type: "change_gate_result"; gateResult: unknown }
     | { type: "change_user_review_text"; text: string }

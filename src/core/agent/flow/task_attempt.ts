@@ -1,4 +1,4 @@
-import type { PlanTask, PlanV1, Planner, ToolCall } from "../../contracts/planning.js";
+import type { PlanTask, PlanV2, Planner, ToolCall } from "../../contracts/planning.js";
 import type { AgentPolicy } from "../../contracts/policy.js";
 import type { RuntimePathsResolver } from "../../contracts/runtime.js";
 import type { AgentState } from "../../contracts/state.js";
@@ -23,7 +23,7 @@ export const runTaskAttempt = async (args: {
   planner: Planner;
   policy: AgentPolicy;
   task: PlanTask;
-  currentPlan: PlanV1;
+  currentPlan: PlanV2;
   completed: Set<string>;
   recentFailures: string[];
   state: AgentState;

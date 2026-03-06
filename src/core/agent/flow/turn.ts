@@ -12,7 +12,7 @@ import type { PlanChangeReviewFn } from "../contracts.js";
 import { setStateError } from "../execution/errors.js";
 import type { AgentEvent } from "../telemetry/events.js";
 import { runTaskWithRetries } from "./task_runner.js";
-import { requiredInput, getNextReadyTask } from "../util/util.js";
+import { requiredInput, getNextReadyTask, areAllTasksCompleted } from "../util/util.js";
 import { ContextEngine } from "../../context_engine/ContextEngine.js";
 
 export const runTurn = async (args: {
@@ -39,10 +39,10 @@ export const runTurn = async (args: {
   setUsedTurn(args.state, args.turn);
   args.onEvent?.({ type: "turn_start", turn: args.turn, maxTurns: args.maxTurns });
   const currentPlan = requiredInput(args.state.planData, "plan missing in plan mode");
-  const nextTask = getNextReadyTask(currentPlan, args.completed);
+  const nextTask = getNextReadyTask(currentPlan, args.completed, args.state.activeMilestoneId);
 
   if (!nextTask) {
-    if (args.completed.size === currentPlan.tasks.length) {
+    if (areAllTasksCompleted(currentPlan, args.completed, args.state.activeMilestoneId)) {
       args.state.status = "done";
       return { status: "done", replans: args.replans };
     }
@@ -84,7 +84,7 @@ export const runTurn = async (args: {
     return { status: "failed", replans };
   }
 
-  if (args.completed.size === currentPlan.tasks.length) {
+  if (areAllTasksCompleted(currentPlan, args.completed, args.state.activeMilestoneId)) {
     args.state.status = "done";
     return { status: "done", replans };
   }

@@ -32,6 +32,8 @@ const createState = (runDir: string): AgentState => ({
   toolCalls: [],
   toolResults: [],
   planHistory: [],
+  milestoneReviewHistory: [],
+  goalReviewHistory: [],
   contextHistory: []
 });
 

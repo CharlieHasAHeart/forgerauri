@@ -1,7 +1,7 @@
 import type { AgentPolicy } from "../../contracts/policy.js";
 import type { AgentState } from "../../contracts/state.js";
 import type { LlmPort } from "../../contracts/llm.js";
-import type { Planner, PlanChangeRequestV2, PlanPatchOperation, PlanTask, PlanV1 } from "../../contracts/planning.js";
+import type { Milestone, Planner, PlanChangeRequestV2, PlanPatchOperation, PlanTask, PlanV2 } from "../../contracts/planning.js";
 import type { ToolRunContext, ToolSpec } from "../../contracts/tools.js";
 import type { Workspace } from "../../contracts/workspace.js";
 import { setStateError } from "../execution/errors.js";
@@ -52,50 +52,130 @@ const moveTask = (tasks: PlanTask[], taskId: string, afterTaskId?: string): Plan
   return tasks;
 };
 
-const applyPlanChangePatch = (plan: PlanV1, request: PlanChangeRequestV2): PlanV1 => {
-  const tasks = [...plan.tasks];
+const cloneMilestone = (milestone: Milestone): Milestone => ({
+  ...milestone,
+  tasks: milestone.tasks.map((task) => ({
+    ...task,
+    dependencies: [...task.dependencies],
+    success_criteria: [...task.success_criteria]
+  })),
+  acceptance: [...milestone.acceptance]
+});
+
+const findMilestoneIndexByTaskId = (milestones: Milestone[], taskId: string): number =>
+  milestones.findIndex((item) => item.tasks.some((task) => task.id === taskId));
+
+const resolveMilestoneIndex = (args: {
+  milestones: Milestone[];
+  milestoneId?: string;
+  fallbackTaskId?: string;
+  activeMilestoneId?: string;
+}): number => {
+  if (args.milestoneId) {
+    const idx = args.milestones.findIndex((item) => item.id === args.milestoneId);
+    if (idx >= 0) return idx;
+  }
+  if (args.fallbackTaskId) {
+    const idx = findMilestoneIndexByTaskId(args.milestones, args.fallbackTaskId);
+    if (idx >= 0) return idx;
+  }
+  if (args.activeMilestoneId) {
+    const idx = args.milestones.findIndex((item) => item.id === args.activeMilestoneId);
+    if (idx >= 0) return idx;
+  }
+  return Math.max(0, args.milestones.length - 1);
+};
+
+const applyPlanChangePatch = (plan: PlanV2, request: PlanChangeRequestV2, activeMilestoneId?: string): PlanV2 => {
+  const milestones = plan.milestones.map(cloneMilestone);
 
   for (const op of request.patch) {
-    if (op.action === "tasks.add") {
-      const next = { ...op.task, dependencies: [...(op.task.dependencies ?? [])], success_criteria: [...(op.task.success_criteria ?? [])] };
-      if (!op.after_task_id) {
-        tasks.unshift(next);
+    if (op.action === "milestones.add") {
+      const milestone = cloneMilestone(op.milestone);
+      if (!op.after_milestone_id) {
+        milestones.push(milestone);
       } else {
-        const afterIdx = tasks.findIndex((task) => task.id === op.after_task_id);
-        if (afterIdx < 0) tasks.push(next);
-        else tasks.splice(afterIdx + 1, 0, next);
+        const idx = milestones.findIndex((item) => item.id === op.after_milestone_id);
+        if (idx < 0) milestones.push(milestone);
+        else milestones.splice(idx + 1, 0, milestone);
       }
       continue;
     }
-    if (op.action === "tasks.remove") {
-      const idx = tasks.findIndex((task) => task.id === op.task_id);
-      if (idx >= 0) tasks.splice(idx, 1);
+
+    if (op.action === "tasks.add") {
+      const milestoneIndex = resolveMilestoneIndex({
+        milestones,
+        milestoneId: op.milestone_id,
+        fallbackTaskId: op.after_task_id,
+        activeMilestoneId
+      });
+      const targetMilestone = milestones[milestoneIndex];
+      if (!targetMilestone) continue;
+      const next = { ...op.task, dependencies: [...(op.task.dependencies ?? [])], success_criteria: [...(op.task.success_criteria ?? [])] };
+      if (!op.after_task_id) {
+        targetMilestone.tasks.push(next);
+      } else {
+        const afterIdx = targetMilestone.tasks.findIndex((task) => task.id === op.after_task_id);
+        if (afterIdx < 0) targetMilestone.tasks.push(next);
+        else targetMilestone.tasks.splice(afterIdx + 1, 0, next);
+      }
       continue;
     }
+
+    if (op.action === "tasks.remove") {
+      const milestoneIndex = resolveMilestoneIndex({
+        milestones,
+        fallbackTaskId: op.task_id,
+        activeMilestoneId
+      });
+      const targetMilestone = milestones[milestoneIndex];
+      if (!targetMilestone) continue;
+      const idx = targetMilestone.tasks.findIndex((task) => task.id === op.task_id);
+      if (idx >= 0) targetMilestone.tasks.splice(idx, 1);
+      continue;
+    }
+
     if (op.action === "tasks.update") {
-      const idx = tasks.findIndex((task) => task.id === op.task_id);
+      const milestoneIndex = resolveMilestoneIndex({
+        milestones,
+        milestoneId: op.milestone_id,
+        fallbackTaskId: op.task_id,
+        activeMilestoneId
+      });
+      const targetMilestone = milestones[milestoneIndex];
+      if (!targetMilestone) continue;
+      const idx = targetMilestone.tasks.findIndex((task) => task.id === op.task_id);
       if (idx < 0) continue;
-      tasks[idx] = {
-        ...tasks[idx],
+      targetMilestone.tasks[idx] = {
+        ...targetMilestone.tasks[idx],
         ...(op.changes as Partial<PlanTask>),
         dependencies: Array.isArray((op.changes as Partial<PlanTask>).dependencies)
-          ? [ ...((op.changes as Partial<PlanTask>).dependencies as string[]) ]
-          : tasks[idx].dependencies,
+          ? [...((op.changes as Partial<PlanTask>).dependencies as string[])]
+          : targetMilestone.tasks[idx].dependencies,
         success_criteria: Array.isArray((op.changes as Partial<PlanTask>).success_criteria)
-          ? [ ...((op.changes as Partial<PlanTask>).success_criteria as PlanTask["success_criteria"]) ]
-          : tasks[idx].success_criteria
+          ? [...((op.changes as Partial<PlanTask>).success_criteria as PlanTask["success_criteria"])]
+          : targetMilestone.tasks[idx].success_criteria
       };
       continue;
     }
+
     if (op.action === "tasks.reorder") {
-      moveTask(tasks, op.task_id, op.after_task_id);
+      const milestoneIndex = resolveMilestoneIndex({
+        milestones,
+        milestoneId: op.milestone_id,
+        fallbackTaskId: op.task_id,
+        activeMilestoneId
+      });
+      const targetMilestone = milestones[milestoneIndex];
+      if (!targetMilestone) continue;
+      moveTask(targetMilestone.tasks, op.task_id, op.after_task_id);
       continue;
     }
   }
 
   return {
     ...plan,
-    tasks
+    milestones
   };
 };
 
@@ -248,7 +328,7 @@ export const handleReplan = async (args: {
     patch: interpreted.outcome.patch as PlanPatchOperation[]
   };
 
-  state.planData = applyPlanChangePatch(currentPlan, approvedPatchRequest);
+  state.planData = applyPlanChangePatch(currentPlan, approvedPatchRequest, state.activeMilestoneId);
   state.planVersion = (state.planVersion ?? 1) + 1;
   state.planHistory?.push({ type: "change_applied", version: state.planVersion, patch: approvedPatchRequest.patch });
   args.onEvent?.({ type: "replan_applied", newVersion: state.planVersion });

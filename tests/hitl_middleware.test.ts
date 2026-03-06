@@ -31,6 +31,8 @@ const createState = (): AgentState => ({
   toolCalls: [],
   toolResults: [],
   planHistory: [],
+  milestoneReviewHistory: [],
+  goalReviewHistory: [],
   contextHistory: []
 });
 

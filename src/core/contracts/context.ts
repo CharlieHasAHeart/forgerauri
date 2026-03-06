@@ -39,6 +39,7 @@ export type ContextPacket = {
   systemRules: string;
   runGoal: string;
   projectSnapshot: string;
+  milestone?: string;
   latestEvidence: string;
   relevantCode: CodeExcerpt[];
   changesSoFar: string;
@@ -67,6 +68,9 @@ export const serializeContextPacket = (packet: ContextPacket): string =>
     "",
     "## ProjectSnapshot",
     packet.projectSnapshot,
+    "",
+    "## Milestone",
+    packet.milestone && packet.milestone.trim().length > 0 ? packet.milestone : "- none",
     "",
     "## LatestEvidence",
     packet.latestEvidence,

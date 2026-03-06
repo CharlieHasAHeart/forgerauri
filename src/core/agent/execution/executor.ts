@@ -1,11 +1,10 @@
-import { access, readFile } from "node:fs/promises";
-import { join } from "node:path";
 import type { AgentPolicy } from "../../contracts/policy.js";
-import type { PlanTask, SuccessCriterion, ToolCall } from "../../contracts/planning.js";
+import type { PlanTask, ToolCall } from "../../contracts/planning.js";
 import type { AgentState } from "../../contracts/state.js";
 import type { ToolRunContext, ToolSpec } from "../../contracts/tools.js";
 import type { KernelHooks } from "../../contracts/hooks.js";
 import { setStateError, truncate } from "./errors.js";
+import { evaluateCriteriaSet } from "./criteria.js";
 import type { AgentEvent } from "../telemetry/events.js";
 
 export type ExecutedToolCall = {
@@ -21,72 +20,6 @@ const normalizeToolResults = (toolName: string, ok: boolean, note?: string): { n
   ok,
   note
 });
-
-const evaluateCriterion = async (args: {
-  criterion: SuccessCriterion;
-  toolResults: Array<{ name: string; ok: boolean }>;
-  ctx: ToolRunContext;
-  state: AgentState;
-  policy: AgentPolicy;
-}): Promise<{ ok: boolean; failure?: string; toolAudit?: { name: string; ok: boolean; error?: string } }> => {
-  const c = args.criterion;
-
-  if (c.type === "tool_result") {
-    const matched = args.toolResults.filter((result) => result.name === c.tool_name);
-    if (matched.length === 0) {
-      return { ok: false, failure: `criteria check failed: ${c.tool_name}` };
-    }
-    const expected = c.expected_ok ?? true;
-    const ok = matched.some((item) => item.ok === expected);
-    return ok ? { ok: true } : { ok: false, failure: `criteria check failed: ${c.tool_name}` };
-  }
-
-  if (c.type === "file_exists") {
-    const base = args.state.appDir ?? args.ctx.memory.appDir ?? args.state.runDir;
-    const target = join(base, c.path);
-    try {
-      await access(target);
-      return { ok: true };
-    } catch {
-      return { ok: false, failure: "criteria check failed: tool_check_file_exists" };
-    }
-  }
-
-  if (c.type === "file_contains") {
-    const base = args.state.appDir ?? args.ctx.memory.appDir ?? args.state.runDir;
-    const target = join(base, c.path);
-    try {
-      const content = await readFile(target, "utf8");
-      if (content.includes(c.contains)) return { ok: true };
-      return { ok: false, failure: "criteria check failed: tool_check_file_contains" };
-    } catch {
-      return { ok: false, failure: "criteria check failed: tool_check_file_contains" };
-    }
-  }
-
-  if (c.type === "command") {
-    if (!args.policy.safety.allowed_commands.includes(c.cmd)) {
-      const failure = `criteria check failed: command ${c.cmd} blocked by policy`;
-      setStateError(args.state, "Config", failure);
-      return {
-        ok: false,
-        failure,
-        toolAudit: { name: `${c.cmd} ${(c.args ?? []).join(" ")}`.trim(), ok: false, error: "blocked by policy" }
-      };
-    }
-    const cwd = c.cwd ?? args.state.appDir ?? args.ctx.memory.appDir ?? args.state.runDir;
-    const result = await args.ctx.runCmdImpl(c.cmd, c.args ?? [], cwd);
-    const expected = c.expect_exit_code ?? 0;
-    if (result.code === expected && result.ok) return { ok: true };
-    return {
-      ok: false,
-      failure: `criteria check failed: command ${c.cmd}`,
-      toolAudit: { name: `${c.cmd} ${String(c.args ?? []).trim()}`, ok: false, error: result.stderr || result.stdout }
-    };
-  }
-
-  return { ok: false, failure: "criteria check failed: unknown criterion" };
-};
 
 export const executeToolCall = async (args: {
   call: ToolCall;
@@ -282,20 +215,27 @@ export const executeActionPlan = async (args: {
 
   const failures: string[] = [];
   const criteriaToolAudit: Array<{ name: string; ok: boolean; error?: string }> = [];
-
-  for (const criterion of args.task.success_criteria) {
-    const verdict = await evaluateCriterion({
-      criterion,
-      toolResults: simpleToolResults,
-      ctx: args.ctx,
-      state: args.state,
-      policy: args.policy
-    });
-    if (!verdict.ok && verdict.failure) {
-      failures.push(verdict.failure);
-    }
-    if (verdict.toolAudit) {
-      criteriaToolAudit.push(verdict.toolAudit);
+  const criteriaOutcome = await evaluateCriteriaSet({
+    criteria: args.task.success_criteria,
+    ctx: args.ctx,
+    state: args.state,
+    policy: args.policy
+  });
+  for (const failure of criteriaOutcome.failures) {
+    failures.push(failure.note);
+    const c = failure.criterion;
+    if (c.type === "command") {
+      criteriaToolAudit.push({
+        name: `${c.cmd} ${(c.args ?? []).join(" ")}`.trim(),
+        ok: false,
+        error: failure.note
+      });
+    } else if (c.type === "tool_result") {
+      criteriaToolAudit.push({
+        name: c.tool_name,
+        ok: false,
+        error: failure.note
+      });
     }
   }
 
