@@ -4,13 +4,13 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "types": ["node", "vitest/globals"],
     "outDir": "dist",
-    "rootDir": ".",
-    "types": ["node", "vitest/globals"]
+    "rootDir": "."
   },
   "include": ["src", "tests", "vitest.config.ts"]
 }
