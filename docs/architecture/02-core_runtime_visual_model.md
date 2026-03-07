@@ -99,7 +99,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  A[preserveOrAdvanceTask] --> B[selectNextTask(state, plan, tasks)]
+  A[preserveOrAdvanceTask] --> B[selectNextTask]
   B --> C{plan 存在且合法?}
   C -- 否 --> Z[clear currentTaskId]
   C -- 是 --> D{currentTaskId 对应任务可继续?}
