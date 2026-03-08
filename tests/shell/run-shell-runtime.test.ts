@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { AgentState, Plan, Task } from "../../src/protocol/index.ts";
 import {
   canExecuteEffectRequest,
   executeEffectRequest
@@ -9,28 +8,17 @@ import {
   runShellRuntimeLoop,
   runShellRuntimeStep
 } from "../../src/shell/run-shell-runtime.ts";
+import {
+  makeAgentState,
+  minimalAgentState,
+  minimalPlan,
+  minimalTasks
+} from "../shared/minimal-runtime-fixtures.ts";
 
 describe("run-shell-runtime", () => {
-  const baseState: AgentState = {
-    runId: "run-1",
-    status: "idle",
-    goal: "ship feature"
-  };
-
-  const plan: Plan = {
-    id: "plan-1",
-    goal: "ship feature",
-    status: "ready",
-    taskIds: ["task-1"]
-  };
-
-  const tasks: Task[] = [
-    {
-      id: "task-1",
-      title: "implement",
-      status: "ready"
-    }
-  ];
+  const baseState = minimalAgentState;
+  const plan = minimalPlan;
+  const tasks = minimalTasks;
 
   it("runShellRuntimeStep returns stable tick/result for runnable input", () => {
     const step = runShellRuntimeStep(baseState, plan, tasks, undefined);
@@ -70,11 +58,11 @@ describe("run-shell-runtime", () => {
   });
 
   it("runShellRuntimeStep returns tick only when no request is available", () => {
-    const terminalState: AgentState = {
+    const terminalState = makeAgentState({
       runId: "run-2",
       status: "done",
       goal: "already finished"
-    };
+    });
 
     const step = runShellRuntimeStep(terminalState, plan, tasks, undefined);
 
@@ -86,11 +74,11 @@ describe("run-shell-runtime", () => {
   });
 
   it("when runtime gate is false, step does not produce executable request/result pair", () => {
-    const stateWithoutPlan: AgentState = {
+    const stateWithoutPlan = makeAgentState({
       runId: "run-gate-1",
       status: "idle",
       goal: "missing plan"
-    };
+    });
 
     expect(canRunShellRuntimeStep(stateWithoutPlan, undefined, tasks, undefined)).toBe(false);
 
@@ -103,11 +91,11 @@ describe("run-shell-runtime", () => {
   it("canRunShellRuntimeStep matches current runtime gate behavior", () => {
     expect(canRunShellRuntimeStep(baseState, plan, tasks, undefined)).toBe(true);
 
-    const terminalState: AgentState = {
+    const terminalState = makeAgentState({
       runId: "run-3",
       status: "failed",
       goal: "stop"
-    };
+    });
 
     expect(canRunShellRuntimeStep(terminalState, plan, tasks, undefined)).toBe(false);
     expect(canRunShellRuntimeStep(baseState, undefined, tasks, undefined)).toBe(false);
@@ -138,11 +126,11 @@ describe("run-shell-runtime", () => {
   });
 
   it("runShellRuntimeLoop stays stable when runtime cannot proceed", () => {
-    const stateWithoutPlan: AgentState = {
+    const stateWithoutPlan = makeAgentState({
       runId: "run-4",
       status: "idle",
       goal: "no plan"
-    };
+    });
 
     const result = runShellRuntimeLoop(stateWithoutPlan, undefined, tasks, 3);
 
