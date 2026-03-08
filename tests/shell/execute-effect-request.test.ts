@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { isEffectResult, type Action, type EffectRequest } from "../../src/protocol/index.ts";
 import { buildActionResult } from "../../src/shell/build-action-result.ts";
-import { executeEffectRequest } from "../../src/shell/execute-effect-request.ts";
+import {
+  canExecuteEffectRequest,
+  executeEffectRequest
+} from "../../src/shell/execute-effect-request.ts";
 
 describe("executeEffectRequest", () => {
   it("returns normalized action_results for valid execute_actions request", () => {
@@ -126,9 +129,28 @@ describe("executeEffectRequest", () => {
     expect(result?.context).toEqual({ handled: true });
   });
 
-  it("returns undefined for undefined input and invalid result shape for invalid request", () => {
+  it("returns undefined for undefined input", () => {
     expect(executeEffectRequest(undefined)).toBeUndefined();
+  });
 
+  it("returns invalid effect result for invalid request object", () => {
+    const invalidRequest = {
+      kind: "execute_actions"
+    } as unknown as EffectRequest;
+
+    const result = executeEffectRequest(invalidRequest);
+
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe("action_results");
+    expect(result?.success).toBe(false);
+    expect(result?.payload).toMatchObject({
+      reason: "invalid_effect_request",
+      requestKind: "unknown"
+    });
+    expect(result?.context).toEqual({ handled: false });
+  });
+
+  it("returns invalid effect result when request kind is not allowed", () => {
     const invalidRequest = {
       kind: "unknown_kind",
       payload: {}
@@ -143,5 +165,36 @@ describe("executeEffectRequest", () => {
       reason: "invalid_effect_request",
       requestKind: "unknown"
     });
+    expect(result?.context).toEqual({ handled: false });
+  });
+});
+
+describe("canExecuteEffectRequest", () => {
+  it("returns false for undefined and invalid request", () => {
+    expect(canExecuteEffectRequest(undefined)).toBe(false);
+
+    const invalidRequest = {
+      kind: "execute_actions"
+    } as unknown as EffectRequest;
+
+    expect(canExecuteEffectRequest(invalidRequest)).toBe(false);
+  });
+
+  it("returns true for valid execute_actions request", () => {
+    const request: EffectRequest = {
+      kind: "execute_actions",
+      payload: { actions: [{ kind: "tool", name: "lint" }] }
+    };
+
+    expect(canExecuteEffectRequest(request)).toBe(true);
+  });
+
+  it("returns true for valid run_review request", () => {
+    const request: EffectRequest = {
+      kind: "run_review",
+      payload: {}
+    };
+
+    expect(canExecuteEffectRequest(request)).toBe(true);
   });
 });
