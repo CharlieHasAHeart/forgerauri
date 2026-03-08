@@ -6,7 +6,8 @@ import {
   type Task
 } from "../protocol/index.js";
 import { driveCoreRun, isCoreRunStable } from "./drive-core-run.js";
-import { canRunEffectCycle, prepareEffectCycle, runEffectCycle } from "./run-effect-cycle.js";
+import { canRunEffectCycle, runEffectCycle } from "./run-effect-cycle.js";
+import { prepareRuntimeStepRequest } from "./prepare-runtime-step-request.js";
 import { isAgentStateTerminal } from "./terminal.js";
 import { cloneAgentState } from "./transition-engine.js";
 
@@ -32,11 +33,7 @@ export function prepareRuntimeTickRequest(
   plan: Plan | undefined,
   tasks: Task[]
 ): EffectRequest | undefined {
-  if (isAgentStateTerminal(state)) {
-    return undefined;
-  }
-
-  return prepareEffectCycle(state, plan, tasks);
+  return prepareRuntimeStepRequest(state, plan, tasks);
 }
 
 export function applyRuntimeTickResult(
