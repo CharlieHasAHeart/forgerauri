@@ -84,24 +84,31 @@ flowchart TD
 sequenceDiagram
   participant Core
   participant Exec as execute-effect-request.ts
+  participant EX as extract-actions-from-effect-request.ts
+  participant AX as action-executor.ts
   participant AR as build-action-result.ts
   participant ER as build-effect-result-from-actions.ts
   participant Out as EffectResult
 
   Core->>Exec: 发送 execute_actions request
-  Exec->>ER: buildEffectResultFromActions(request, actions)
-  Note over Exec,ER: 当前 actions 可能为空数组
-  ER->>AR: buildActionResult for each action
-  AR-->>ER: ActionResult 列表
+  Exec->>EX: extractActionsFromEffectRequest(request)
+  EX-->>Exec: Action[]
+  Exec->>AX: executeActions(actions)
+  AX->>AR: buildActionResult for each action
+  AR-->>AX: ActionResult 列表
+  AX-->>Exec: ActionResult[]
+  Exec->>ER: buildEffectResultFromActionResults(request, results)
   ER-->>Exec: 聚合后的 EffectResult
   Exec-->>Out: 返回 EffectResult
   Out-->>Core: 回流到 core
 ```
 
-这仍不是“真实 action 执行器”，当前阶段没有接入外部执行端。现在的关键变化是 shell 主路径已不再停留在 accepted-only 占位结果，而是显式经过 `Action -> ActionResult -> EffectResult` 桥接分层。即使 action 列表当前可为空，链路形状已经稳定，后续可在不改协议边界的前提下替换执行实现。这个分层让 shell 更容易从占位逻辑平滑过渡到真实执行逻辑。它是从 placeholder loop 向真实 loop 迈进的一步。
+这仍不是“真实 action 执行器”，当前阶段没有接入外部 provider/sandbox/tool backend。当前主线路径已显式分层为：请求提取 actions、执行器边界生成 action results、再聚合为 effect result。与早期“直接 actions -> effect result”相比，这一版把 executor 边界放进了主路径，后续接入真实执行能力时替换点更清晰。这个分层仍保持最小实现，不把未来完整执行系统写成已落地事实。
 
 关联源文件：
 - `src/shell/execute-effect-request.ts`
+- `src/shell/extract-actions-from-effect-request.ts`
+- `src/shell/action-executor.ts`
 - `src/shell/build-action-result.ts`
 - `src/shell/build-effect-result-from-actions.ts`
 - `src/protocol/action.ts`

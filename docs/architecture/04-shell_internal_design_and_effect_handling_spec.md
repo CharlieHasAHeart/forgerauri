@@ -46,32 +46,42 @@ Shell 是 integration layer，不是语义裁决层。
 - 当前映射：`executeEffectRequest`（`src/shell/execute-effect-request.ts`）。
 - 职责：接收并分派 `EffectRequest.kind`，进入对应处理路径。
 
-### 3.2 Action Result Builder
+### 3.2 Action Extractor Boundary
+
+- 当前映射：`extractActionsFromEffectRequest`（`src/shell/extract-actions-from-effect-request.ts`）。
+- 职责：从 `EffectRequest` 提取合法 `Action[]`，不负责执行和聚合。
+
+### 3.3 Action Executor Boundary
+
+- 当前映射：`executeActions`（`src/shell/action-executor.ts`）。
+- 职责：将 `Action[]` 转为 `ActionResult[]`，当前为最小 executor boundary。
+
+### 3.4 Action Result Builder
 
 - 当前映射：`buildActionResult`（`src/shell/build-action-result.ts`）。
 - 职责：将单个 `Action` 转换为 `ActionResult`。
 
-### 3.3 Effect Result Builder
+### 3.5 Effect Result Builder
 
-- 当前映射：`buildEffectResultFromActions`（`src/shell/build-effect-result-from-actions.ts`）。
+- 当前映射：`buildEffectResultFromActionResults`（`src/shell/build-effect-result-from-actions.ts`）。
 - 职责：将 `ActionResult[]` 聚合为 `EffectResult`。
 
-### 3.4 Shell Runtime Loop
+### 3.6 Shell Runtime Loop
 
 - 当前映射：`runShellRuntimeStep` / `runShellRuntimeLoop`（`src/shell/run-shell-runtime.ts`）。
 - 职责：组织 tick 调用、request 处理与 result 回流。
 
-### 3.5 Context Construction Boundary
+### 3.7 Context Construction Boundary
 
 - 当前主线：保持边界位，不强制具体实现。
 - 说明：Shell 语义允许承载上下文构造能力，但当前主线未展开完整 context engine。
 
-### 3.6 Result Normalization Boundary
+### 3.8 Result Normalization Boundary
 
 - 当前主线：已形成 `Action -> ActionResult -> EffectResult` 的最小归一化路径。
 - 说明：provider/tool/sandbox 原生结果应先归一化再回流 Core。
 
-### 3.7 Telemetry / Audit Hooks（治理机制）
+### 3.9 Telemetry / Audit Hooks（治理机制）
 
 - 当前主线：保留治理扩展位，不作为 Shell 语义主体。
 - 说明：可用于 tracing/metrics/audit，但不应改变 Core 语义。
@@ -86,10 +96,10 @@ Shell 是 integration layer，不是语义裁决层。
 2. Shell 根据 `request.kind` 进入对应处理路径。  
 3. Shell 组织该路径所需的上下文或执行输入。  
 4. Shell 调用外部能力或内部 builder（按能力路径选择）。  
-5. Shell 将原始输出转换为 `ActionResult` / `EffectResult`。  
+5. Shell 先产出 `ActionResult[]`，再聚合为 `EffectResult`。  
 6. Shell 向 Core 回流 normalized `EffectResult`。
 
-当前主线已落地的是最小路径：`execute_actions` 可进入 action/effect result bridge。`planning/toolcall/replan/review` 不应在本文中被表述为“已全部落地的固定阶段枚举”，它们仅可作为 Shell 可承载的 effect intent 示例。返回对象必须是 Core 可消费的 normalized protocol object，而不是私有 `ok/data/error/meta` 结构约定。
+当前主线已落地的是最小路径：`execute_actions` 可进入 `EffectRequest -> Action[] -> ActionResult[] -> EffectResult` 桥接链路。`planning/toolcall/replan/review` 不应在本文中被表述为“已全部落地的固定阶段枚举”，它们仅可作为 Shell 可承载的 effect intent 示例。返回对象必须是 Core 可消费的 normalized protocol object，而不是私有 `ok/data/error/meta` 结构约定。
 
 ---
 
