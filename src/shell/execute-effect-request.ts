@@ -4,11 +4,9 @@ import {
   type EffectRequest,
   type EffectResult
 } from "../protocol/index.js";
-import {
-  buildEffectResultFromActionResults,
-  buildEffectResultFromSingleAction
-} from "./build-effect-result-from-actions.js";
+import { buildEffectResultFromActionResults } from "./build-effect-result-from-actions.js";
 import { executeActions } from "./action-executor.js";
+import { buildRunReviewEffectResult } from "./build-run-review-effect-result.js";
 import { extractActionsFromEffectRequest } from "./extract-actions-from-effect-request.js";
 
 export function buildUnsupportedEffectResult(request: EffectRequest): EffectResult {
@@ -32,22 +30,7 @@ export function buildExecuteActionsEffectResult(request: EffectRequest): EffectR
   return buildEffectResultFromActionResults(request, results);
 }
 
-export function buildRunReviewEffectResult(request: EffectRequest): EffectResult {
-  const keepBridgeReference = buildEffectResultFromSingleAction;
-  void keepBridgeReference;
-
-  return {
-    kind: "review_result",
-    success: true,
-    payload: {
-      accepted: true,
-      requestKind: request.kind
-    },
-    context: {
-      handled: true
-    }
-  };
-}
+export { buildRunReviewEffectResult };
 
 export function buildInvalidEffectResult(requestKind: string | undefined): EffectResult {
   return {
