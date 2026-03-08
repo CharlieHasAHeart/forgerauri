@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AgentState, Plan, Task } from "../../src/protocol/index.ts";
 import {
+  canExecuteEffectRequest,
+  executeEffectRequest
+} from "../../src/shell/execute-effect-request.ts";
+import {
   canRunShellRuntimeStep,
   runShellRuntimeLoop,
   runShellRuntimeStep
@@ -47,6 +51,24 @@ describe("run-shell-runtime", () => {
     });
   });
 
+  it("runnable runtime step emits request accepted by effect-entry gate", () => {
+    const step = runShellRuntimeStep(baseState, plan, tasks, undefined);
+
+    expect(step.tick.request).toBeDefined();
+    expect(canExecuteEffectRequest(step.tick.request)).toBe(true);
+    // Current implementation behavior: runnable step emits execute_actions request.
+    expect(step.tick.request?.kind).toBe("execute_actions");
+  });
+
+  it("runtime step result matches explicit executeEffectRequest(entry) result", () => {
+    const step = runShellRuntimeStep(baseState, plan, tasks, undefined);
+
+    expect(step.tick.request).toBeDefined();
+    const explicitResult = executeEffectRequest(step.tick.request);
+
+    expect(step.result).toEqual(explicitResult);
+  });
+
   it("runShellRuntimeStep returns tick only when no request is available", () => {
     const terminalState: AgentState = {
       runId: "run-2",
@@ -59,6 +81,21 @@ describe("run-shell-runtime", () => {
     expect(step.tick).toBeDefined();
     expect(step.tick.state).toEqual(terminalState);
     expect(step.tick.state).not.toBe(terminalState);
+    expect(step.tick.request).toBeUndefined();
+    expect(step.result).toBeUndefined();
+  });
+
+  it("when runtime gate is false, step does not produce executable request/result pair", () => {
+    const stateWithoutPlan: AgentState = {
+      runId: "run-gate-1",
+      status: "idle",
+      goal: "missing plan"
+    };
+
+    expect(canRunShellRuntimeStep(stateWithoutPlan, undefined, tasks, undefined)).toBe(false);
+
+    const step = runShellRuntimeStep(stateWithoutPlan, undefined, tasks, undefined);
+
     expect(step.tick.request).toBeUndefined();
     expect(step.result).toBeUndefined();
   });
@@ -86,6 +123,17 @@ describe("run-shell-runtime", () => {
     const step = runShellRuntimeStep(baseState, plan, tasks, undefined);
     const loopState = runShellRuntimeLoop(baseState, plan, tasks, 1);
 
+    expect(loopState).toEqual(step.tick.state);
+  });
+
+  it("runShellRuntimeLoop(1) remains consistent with step + effect-entry contract", () => {
+    const step = runShellRuntimeStep(baseState, plan, tasks, undefined);
+    const loopState = runShellRuntimeLoop(baseState, plan, tasks, 1);
+    const explicitResult = executeEffectRequest(step.tick.request);
+
+    expect(step.tick.request).toBeDefined();
+    expect(canExecuteEffectRequest(step.tick.request)).toBe(true);
+    expect(step.result).toEqual(explicitResult);
     expect(loopState).toEqual(step.tick.state);
   });
 
