@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Action, type ActionResult, type EffectRequest } from "../../src/protocol/index.ts";
+import { type Action, type EffectRequest } from "../../src/protocol/index.ts";
 import { buildActionResult } from "../../src/shell/build-action-result.ts";
 import {
   areAllActionResultsSuccessful,
@@ -17,12 +17,8 @@ describe("build-effect-result-from-actions", () => {
   };
 
   it("buildActionResultsPayload returns stable payload structure", () => {
-    const results: ActionResult[] = [
-      {
-        status: "succeeded",
-        actionName: "lint"
-      }
-    ];
+    const action: Action = { kind: "tool", name: "lint" };
+    const results = [buildActionResult(action)];
 
     const payload = buildActionResultsPayload(results);
 
@@ -37,28 +33,22 @@ describe("build-effect-result-from-actions", () => {
   });
 
   it("areAllActionResultsSuccessful returns true for all successful results", () => {
-    const results: ActionResult[] = [
-      { success: true } as unknown as ActionResult,
-      { success: true } as unknown as ActionResult
+    const results = [
+      buildActionResult({ kind: "tool", name: "lint" }),
+      buildActionResult({ kind: "command", name: "test" })
     ];
 
     expect(areAllActionResultsSuccessful(results)).toBe(true);
   });
 
   it("areAllActionResultsSuccessful returns false when any result fails", () => {
-    const results: ActionResult[] = [
-      { status: "succeeded", actionName: "lint" },
-      { status: "failed", actionName: "test" }
-    ];
+    const results = [buildActionResult({ kind: "tool", name: "lint" }), buildActionResult(undefined)];
 
     expect(areAllActionResultsSuccessful(results)).toBe(false);
   });
 
   it("buildEffectResultFromActionResults returns normalized EffectResult", () => {
-    const results: ActionResult[] = [
-      { status: "succeeded", actionName: "lint" },
-      { status: "failed", actionName: "test", errorMessage: "boom" }
-    ];
+    const results = [buildActionResult({ kind: "tool", name: "lint" }), buildActionResult(undefined)];
 
     const effectResult = buildEffectResultFromActionResults(validRequest, results);
 
@@ -145,5 +135,21 @@ describe("build-effect-result-from-actions", () => {
     ] as unknown as Action[];
 
     expect(canBuildEffectResultFromActions(validRequest, mixedActions)).toBe(false);
+  });
+
+  it("supports defensive aggregation with non-builder results for boundary tolerance", () => {
+    const looseResults = [{ success: true }, { success: false }] as unknown[];
+    const effectResult = buildEffectResultFromActionResults(
+      validRequest,
+      looseResults as ReturnType<typeof buildActionResult>[]
+    );
+
+    expect(effectResult.kind).toBe("action_results");
+    expect(effectResult.success).toBe(false);
+    expect(effectResult.context).toEqual({
+      requestKind: "execute_actions",
+      handled: true
+    });
+    expect(effectResult.payload).toMatchObject({ count: 2 });
   });
 });
