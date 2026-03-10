@@ -6,6 +6,7 @@ import {
 } from "../../src/shell/execute-effect-request.ts";
 import {
   canRunShellRuntimeStep,
+  shouldContinueShellRuntimeLoop,
   runShellRuntimeLoop,
   runShellRuntimeStep
 } from "../../src/shell/run-shell-runtime.ts";
@@ -142,6 +143,38 @@ describe("run-shell-runtime", () => {
 
     expect(canRunShellRuntimeStep(terminalState, plan, tasks, undefined)).toBe(false);
     expect(canRunShellRuntimeStep(baseState, undefined, tasks, undefined)).toBe(false);
+  });
+
+  it("shouldContinueShellRuntimeLoop returns false for terminal state", () => {
+    const terminalState = makeAgentState({
+      runId: "run-5",
+      status: "done",
+      goal: "stop"
+    });
+
+    expect(shouldContinueShellRuntimeLoop(terminalState, plan, tasks, undefined)).toBe(false);
+  });
+
+  it("shouldContinueShellRuntimeLoop returns false when plan is missing", () => {
+    expect(shouldContinueShellRuntimeLoop(baseState, undefined, tasks, undefined)).toBe(false);
+  });
+
+  it("shouldContinueShellRuntimeLoop returns true for runnable input", () => {
+    expect(shouldContinueShellRuntimeLoop(baseState, plan, tasks, undefined)).toBe(true);
+  });
+
+  it("runShellRuntimeLoop stops consistently when continue gate is false", () => {
+    const stateWithoutPlan = makeAgentState({
+      runId: "run-gate-2",
+      status: "idle",
+      goal: "missing plan"
+    });
+
+    expect(shouldContinueShellRuntimeLoop(stateWithoutPlan, undefined, tasks, undefined)).toBe(false);
+
+    const loopState = runShellRuntimeLoop(stateWithoutPlan, undefined, tasks, 2);
+
+    expect(loopState).toEqual(stateWithoutPlan);
   });
 
   it("runShellRuntimeLoop returns input state when maxSteps <= 0", () => {

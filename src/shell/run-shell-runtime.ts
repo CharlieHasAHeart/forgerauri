@@ -78,7 +78,7 @@ export function runShellRuntimeLoop(
   let incomingResult: EffectResult | undefined;
 
   for (let step = 0; step < maxSteps; step += 1) {
-    if (!canRunShellRuntimeStep(currentState, plan, tasks, incomingResult)) {
+    if (!shouldContinueShellRuntimeLoop(currentState, plan, tasks, incomingResult)) {
       break;
     }
 
@@ -88,4 +88,13 @@ export function runShellRuntimeLoop(
   }
 
   return currentState;
+}
+
+export function shouldContinueShellRuntimeLoop(
+  state: AgentState,
+  plan: Plan | undefined,
+  tasks: Task[],
+  incomingResult: EffectResult | undefined
+): boolean {
+  return canRunShellRuntimeStep(state, plan, tasks, incomingResult);
 }
