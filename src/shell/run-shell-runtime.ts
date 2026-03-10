@@ -11,7 +11,6 @@ import {
   type RuntimeTickOutput
 } from "../core/index.js";
 import {
-  canExecuteEffectRequest,
   executeEffectRequest
 } from "./execute-effect-request.js";
 
@@ -30,13 +29,6 @@ export function runShellRuntimeStep(
 
   if (!tick.request) {
     return { tick };
-  }
-
-  if (!canExecuteEffectRequest(tick.request)) {
-    return {
-      tick,
-      result: executeEffectRequest(tick.request)
-    };
   }
 
   return {

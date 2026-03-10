@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { type EffectResult } from "../../src/protocol/index.ts";
 import {
   canExecuteEffectRequest,
   executeEffectRequest
@@ -55,6 +56,48 @@ describe("run-shell-runtime", () => {
     const explicitResult = executeEffectRequest(step.tick.request);
 
     expect(step.result).toEqual(explicitResult);
+  });
+
+  it("next step consumes previous successful incoming result and preserves current updates", () => {
+    const firstStep = runShellRuntimeStep(baseState, plan, tasks, undefined);
+    const secondStep = runShellRuntimeStep(firstStep.tick.state, plan, tasks, firstStep.result);
+
+    expect(firstStep.result).toMatchObject({
+      kind: "action_results",
+      success: true
+    });
+    expect(secondStep.tick.state).toMatchObject({
+      status: "running",
+      lastEffectResultKind: "action_results",
+      currentTaskId: undefined
+    });
+    expect(secondStep.tick.request).toMatchObject({ kind: "execute_actions" });
+    expect(secondStep.result).toMatchObject({
+      kind: "action_results",
+      success: true
+    });
+  });
+
+  it("next step consumes failed incoming result and preserves current failure behavior", () => {
+    const failedIncoming: EffectResult = {
+      kind: "action_results",
+      success: false,
+      payload: {
+        reason: "forced_failure"
+      },
+      context: {
+        handled: false
+      }
+    };
+
+    const step = runShellRuntimeStep(baseState, plan, tasks, failedIncoming);
+
+    expect(step.tick.state).toMatchObject({
+      status: "failed",
+      lastEffectResultKind: "action_results"
+    });
+    expect(step.tick.request).toBeUndefined();
+    expect(step.result).toBeUndefined();
   });
 
   it("runShellRuntimeStep returns tick only when no request is available", () => {
