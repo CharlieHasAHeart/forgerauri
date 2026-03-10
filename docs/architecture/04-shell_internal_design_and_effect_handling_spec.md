@@ -68,8 +68,9 @@ Shell 是 integration layer，不是语义裁决层。
 
 ### 3.6 Shell Runtime Loop
 
-- 当前映射：`runShellRuntimeStep` / `runShellRuntimeLoop`（`src/shell/run-shell-runtime.ts`）。
-- 职责：组织 tick 调用、request 处理与 result 回流。
+- 当前映射：`prepareShellRuntimeStepTick`、`executeShellRuntimeRequest`、`runShellRuntimeStep`、`runShellRuntimeLoop`（`src/shell/*`）。
+- 职责：将 shell step 拆分为 tick 准备边界、request 执行边界、step 编排与 loop 编排，并保持 incoming result 的回流。
+- 说明：这是当前实现态对 runtime 粒度的细化，不代表更大平台能力的承诺。
 
 ### 3.7 Context Construction Boundary
 
