@@ -7,10 +7,10 @@ import {
 } from "../protocol/index.js";
 import {
   canRunRuntimeStep,
-  runRuntimeTick,
   type RuntimeTickOutput
 } from "../core/index.js";
 import { executeShellRuntimeRequest } from "./execute-shell-runtime-request.js";
+import { prepareShellRuntimeStepTick } from "./prepare-shell-runtime-step-tick.js";
 
 export interface ShellRuntimeStepOutput {
   tick: RuntimeTickOutput;
@@ -23,7 +23,7 @@ export function runShellRuntimeStep(
   tasks: Task[],
   incomingResult: EffectResult | undefined
 ): ShellRuntimeStepOutput {
-  const tick = runRuntimeTick(state, plan, tasks, incomingResult);
+  const tick = prepareShellRuntimeStepTick(state, plan, tasks, incomingResult);
 
   if (!tick.request) {
     return { tick };
