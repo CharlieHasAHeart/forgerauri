@@ -10,9 +10,7 @@ import {
   runRuntimeTick,
   type RuntimeTickOutput
 } from "../core/index.js";
-import {
-  executeEffectRequest
-} from "./execute-effect-request.js";
+import { executeShellRuntimeRequest } from "./execute-shell-runtime-request.js";
 
 export interface ShellRuntimeStepOutput {
   tick: RuntimeTickOutput;
@@ -33,7 +31,7 @@ export function runShellRuntimeStep(
 
   return {
     tick,
-    result: executeEffectRequest(tick.request)
+    result: executeShellRuntimeRequest(tick.request)
   };
 }
 
